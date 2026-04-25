@@ -95,6 +95,8 @@ mcp-chrome-bridge register
    - 点击"加载已解压的扩展程序"，选择刚刚解压出来的扩展目录
    - 点击插件图标打开插件，点击连接即可看到mcp的配置
 
+<img width="420" alt="Chrome MCP 扩展弹窗连接成功后显示 MCP 配置" src="docs/images/readme-extension-connect.png" />
+
 如果你要从源码构建，不走 release 安装，直接看 [贡献指南](docs/CONTRIBUTING_zh.md)。
 
 ### 在支持MCP协议的客户端中使用

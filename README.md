@@ -97,6 +97,8 @@ mcp-chrome-bridge register
    - Click "Load unpacked" and select the extracted extension folder
    - Click the extension icon to open the plugin, then click connect to see the MCP configuration
 
+<img width="420" alt="Chrome MCP extension popup showing the MCP config after connecting" src="docs/images/readme-extension-connect.png" />
+
 If you want to build from source instead of using release assets, see [Contributing Guide](docs/CONTRIBUTING.md).
 
 ### Usage with MCP Protocol Clients

@@ -32,6 +32,8 @@ mcp-chrome-bridge register
    - 点击"加载已解压的扩展程序"，选择解压后的扩展目录
    - 点击插件图标打开插件，点击连接即可看到mcp的配置
 
+<img width="420" alt="Chrome MCP 扩展弹窗连接成功后显示 MCP 配置" src="./images/readme-extension-connect.png" />
+
 4. **在 CherryStudio 中使用**
 
 类型选streamableHttp。默认 url 填 `http://127.0.0.1:12306/mcp`；如果你改过 host 或 port，就按实际值填。可用环境变量：`CHROME_MCP_HOST` / `MCP_HTTP_HOST`、`CHROME_MCP_PORT` / `MCP_HTTP_PORT`。
