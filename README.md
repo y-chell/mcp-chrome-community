@@ -304,12 +304,46 @@ We welcome contributions! Please see [CONTRIBUTING.md](docs/CONTRIBUTING.md) for
 
 ## 🚧 Future Roadmap
 
-We have exciting plans for the future development of Chrome MCP Server:
+The next community-fork milestone is not "add as many tools as possible". The priority is to make the existing browser capabilities more reliable, faster, and easier for agents to use correctly.
 
-- [ ] Authentication
-- [ ] Recording and Playback
-- [ ] Workflow Automation
-- [ ] Enhanced Browser Support (Firefox Extension)
+### 2026-04-25 v1.1 Priorities
+
+- [ ] `P0` Stabilize iframe / Shadow DOM / ref-based targeting
+  - Fix the class of failures where the element is visibly on the page but the tool still returns `not found`
+  - Related issues: `#172`, `#126`
+  - Primary modules: `app/chrome-extension/entrypoints/background/tools/browser/read-page.ts`, `interaction.ts`, `computer.ts`, `inject-scripts/accessibility-tree-helper.js`, `click-helper.js`, `fill-helper.js`
+
+- [ ] `P0` Add robust waiting and assertions for dynamic pages
+  - Cover common agent actions such as "wait until text appears/disappears", "wait until clickable", "wait until request finishes", and "wait until download completes"
+  - Related issues: `#93`, `#200`, `#43`
+  - Primary modules: `computer.ts`, `common.ts`, `download.ts`, `network-capture.ts`, `app/chrome-extension/entrypoints/background/record-replay/engine/policies/wait.ts`
+
+- [ ] `P1` Make screenshots smaller and default to agent-friendly output
+  - Reduce token blow-ups, prefer targeted captures, and improve the save/download flow
+  - Related issues: `#163`, `#207`
+  - Primary modules: `screenshot.ts`, `packages/shared/src/tools.ts`, `app/chrome-extension/utils/image-utils.ts`
+
+- [ ] `P1` Improve console / dialog / network result quality
+  - Make `chrome_console` more useful for deep objects, handle DevTools conflicts better, and improve dialog/network inspection quality
+  - Related issues: `#215`, `#191`, `#201`
+  - Primary modules: `console.ts`, `console-buffer.ts`, `dialog.ts`, `javascript.ts`, `network-capture.ts`
+
+- [ ] `P1` Tighten multi-session / multi-window / background-run isolation
+  - Reduce cross-session interference, focus stealing, and rogue tool behavior under concurrency
+  - Related issues: `#152`, `#178`, `#162`, `#141`
+  - Primary modules: `app/native-server/src/mcp/mcp-server.ts`, `mcp-server-stdio.ts`, `app/chrome-extension/entrypoints/background/native-host.ts`, `computer.ts`, `common.ts`, `app/chrome-extension/utils/cdp-session-manager.ts`
+
+- [ ] `P2` Expand high-value page operations
+  - Build on top of `chrome_computer`, `chrome_upload_file`, `chrome_handle_download`, and `record_replay_flow_run` to improve `hover`, drag/drop, clipboard actions, tab groups, complex forms, and reusable flows
+  - Related issues: `#141`, `#171`, `#205`
+  - Primary modules: `computer.ts`, `file-upload.ts`, `download.ts`, `bookmark.ts`, `history.ts`, `app/chrome-extension/entrypoints/background/tools/record-replay.ts`
+
+### Mid-Term Directions
+
+- [ ] Move recording/playback from "works in basic cases" to "stable and reusable"
+- [ ] Move workflow automation from "single run" to "publishable, debuggable, schedulable"
+- [ ] Extend browser support after Chrome / Edge stability is solid enough
+- [ ] Add authentication and tool permission tiers
 
 ---
 

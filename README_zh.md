@@ -298,15 +298,46 @@ https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
 
 ## 🚧 未来发展路线图
 
-我们对 Chrome MCP Server 的未来发展有着激动人心的计划：
+社区版接下来的重点不是盲目继续加工具，而是先把现有能力做稳、做快、做强。
 
-- [ ] 身份认证
+### 2026-04-25 v1.1 优先级
 
-- [ ] 录制与回放
+- [ ] `P0` iframe / Shadow DOM / ref 定位稳定化
+  - 先解决“元素明明在页面里，但工具总说 not found”这类问题
+  - 关联问题：`#172`、`#126`
+  - 主要模块：`app/chrome-extension/entrypoints/background/tools/browser/read-page.ts`、`interaction.ts`、`computer.ts`、`inject-scripts/accessibility-tree-helper.js`、`click-helper.js`、`fill-helper.js`
 
-- [ ] 工作流自动化
+- [ ] `P0` 动态页面等待与断言
+  - 补齐“等文本出现/消失”“等元素可点击”“等请求完成”“等下载完成”这类高频动作，减少 AI 乱点和抢跑
+  - 关联问题：`#93`、`#200`、`#43`
+  - 主要模块：`computer.ts`、`common.ts`、`download.ts`、`network-capture.ts`、`app/chrome-extension/entrypoints/background/record-replay/engine/policies/wait.ts`
 
-- [ ] 增强浏览器支持（Firefox 扩展）
+- [ ] `P1` 截图输出瘦身和局部截图优先
+  - 优先解决截图太大、token 爆掉、还得手动保存这些问题
+  - 关联问题：`#163`、`#207`
+  - 主要模块：`screenshot.ts`、`packages/shared/src/tools.ts`、`app/chrome-extension/utils/image-utils.ts`
+
+- [ ] `P1` console / dialog / network 结果质量
+  - 把 `chrome_console` 的深层对象、DevTools 冲突、弹窗信息读取、网络抓包结果做得更稳
+  - 关联问题：`#215`、`#191`、`#201`
+  - 主要模块：`console.ts`、`console-buffer.ts`、`dialog.ts`、`javascript.ts`、`network-capture.ts`
+
+- [ ] `P1` 多会话 / 多窗口 / 后台运行隔离
+  - 降低并发串线、窗口抢焦点、工具失控这类问题
+  - 关联问题：`#152`、`#178`、`#162`、`#141`
+  - 主要模块：`app/native-server/src/mcp/mcp-server.ts`、`mcp-server-stdio.ts`、`app/chrome-extension/entrypoints/background/native-host.ts`、`computer.ts`、`common.ts`、`app/chrome-extension/utils/cdp-session-manager.ts`
+
+- [ ] `P2` 更强的页面操作能力
+  - 在现有 `chrome_computer`、`chrome_upload_file`、`chrome_handle_download`、`record_replay_flow_run` 基础上，继续补 `hover`、拖放、剪贴板、标签组、复杂表单和流程复用
+  - 关联问题：`#141`、`#171`、`#205`
+  - 主要模块：`computer.ts`、`file-upload.ts`、`download.ts`、`bookmark.ts`、`history.ts`、`app/chrome-extension/entrypoints/background/tools/record-replay.ts`
+
+### 中期方向
+
+- [ ] 录制与回放从“能跑”补到“稳定可复用”
+- [ ] 工作流自动化从“单次执行”补到“可发布、可调试、可定时”
+- [ ] 增强浏览器支持（先把 Chrome / Edge 稳住，再评估 Firefox）
+- [ ] 身份认证和工具权限分级
 
 ---
 
