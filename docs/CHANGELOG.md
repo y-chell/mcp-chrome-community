@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Community-maintained fork**: Project maintenance is now continued at `y-chell/mcp-chrome-community`
 - **Release direction**: Upcoming community releases prioritize connection stability, compatibility fixes, and reviewed pull requests before adding new tools
 - **CI runtime**: Release workflow now runs on Node.js 24 and avoids deprecated Node 20-based GitHub Action runtimes for pnpm setup
+- **Project naming**: Package names, CLI names, extension display names, workflow asset names, and setup examples are now aligned around `mcp-chrome-community`
+- **CLI compatibility**: The primary command is now `mcp-chrome-community`, while legacy aliases such as `mcp-chrome-bridge`, `chrome-mcp-bridge`, and `mcp-chrome-stdio` remain available for existing setups
+- **Version consistency**: Native server metadata, stdio proxy metadata, release packaging, and installation docs now consistently use `1.0.2` instead of mixed legacy version strings
 
 ### Fixed
 
@@ -27,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Install path clarity**: README and Windows install docs now tell users to install the community fork from GitHub Release assets instead of the npm registry package name
 - **Node support policy**: README and contributing docs now distinguish minimum support (Node.js 20), recommended versions (Node.js 22/24 LTS), and the current untested status of Node.js 25
+- **Naming cleanup**: README, CLI config docs, troubleshooting docs, architecture docs, and native install docs now use the community project name consistently
 
 ## [v1.0.1] - 2026-04-25
 
