@@ -12,10 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Community-maintained fork**: Project maintenance is now continued at `y-chell/mcp-chrome-community`
 - **Release direction**: Upcoming community releases prioritize connection stability, compatibility fixes, and reviewed pull requests before adding new tools
 
-### Notes
+### Added
 
-- **Recommended next release**: `v1.0.1`
-- **Suggested release title**: `v1.0.1 - community maintenance kickoff`
+- **GitHub Release automation**: `v*` tags and manual dispatch now build release assets, publish them to GitHub Releases, and attach SHA-256 checksums
 
 ## [v1.0.1] - 2026-04-25
 

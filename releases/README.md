@@ -1,10 +1,12 @@
-# Chrome MCP Server Extension - Latest Release
+# Chrome MCP Community - Release Downloads
 
 ## 🚀 快速安装
 
 ### 1. 下载扩展
 
-下载 [chrome-mcp-server-latest.zip](/releases/chrome-extension/latest/chrome-mcp-server-lastest.zip)
+请直接到 GitHub Releases 页面下载最新版：
+
+https://github.com/y-chell/mcp-chrome-community/releases
 
 ### 2. 安装步骤
 
@@ -34,12 +36,10 @@
 ### 常见问题
 
 1. **扩展无法加载**
-
    - 确保已开启开发者模式
    - 检查文件夹结构是否完整
 
 2. **无法连接 Native Server**
-
    - 确认 Native Server 正在运行
    - 检查端口号是否正确
    - 查看浏览器控制台错误信息

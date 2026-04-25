@@ -1,72 +1,163 @@
-# name: Build and Release Chrome Extension
+name: Build and Publish Release
 
-# on:
-#   push:
-#     branches: [ master, develop ]
-#     paths:
-#       - 'app/chrome-extension/**'
-#   pull_request:
-#     branches: [ master ]
-#     paths:
-#       - 'app/chrome-extension/**'
-#   workflow_dispatch:
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish, for example v1.0.1'
+        required: false
+        type: string
 
-# jobs:
-#   build-extension:
-#     runs-on: ubuntu-latest
-    
-#     steps:
-#     - name: Checkout code
-#       uses: actions/checkout@v4
-      
-#     - name: Setup Node.js
-#       uses: actions/setup-node@v4
-#       with:
-#         node-version: '18'
-#         cache: 'npm'
-#         cache-dependency-path: 'app/chrome-extension/package-lock.json'
-        
-#     - name: Install dependencies
-#       run: |
-#         cd app/chrome-extension
-#         npm ci
-        
-#     - name: Build extension
-#       run: |
-#         cd app/chrome-extension
-#         npm run build
-        
-#     - name: Create zip package
-#       run: |
-#         cd app/chrome-extension
-#         npm run zip
-        
-#     - name: Prepare release directory
-#       run: |
-#         mkdir -p releases/chrome-extension/latest
-#         mkdir -p releases/chrome-extension/$(date +%Y%m%d-%H%M%S)
-        
-#     - name: Copy release files
-#       run: |
-#         # Copy to latest
-#         cp app/chrome-extension/.output/chrome-mv3-prod.zip releases/chrome-extension/latest/chrome-mcp-server-latest.zip
-        
-#         # Copy to timestamped version
-#         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-#         cp app/chrome-extension/.output/chrome-mv3-prod.zip releases/chrome-extension/$TIMESTAMP/chrome-mcp-server-$TIMESTAMP.zip
-        
-#     - name: Upload build artifacts
-#       uses: actions/upload-artifact@v4
-#       with:
-#         name: chrome-extension-build
-#         path: releases/chrome-extension/
-#         retention-days: 30
-        
-#     - name: Commit and push releases (if on main branch)
-#       if: github.ref == 'refs/heads/main'
-#       run: |
-#         git config --local user.email "action@github.com"
-#         git config --local user.name "GitHub Action"
-#         git add releases/
-#         git diff --staged --quiet || git commit -m "Auto-build: Update Chrome extension release [skip ci]"
-#         git push
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${{ github.event.inputs.tag }}"
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          if [ -z "${tag}" ]; then
+            version="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+            tag="v${version}"
+          fi
+
+          version="${tag#v}"
+          native_version="$(node -p "JSON.parse(require('fs').readFileSync('app/native-server/package.json', 'utf8')).version")"
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "native_version=${native_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Prepare extension
+        run: pnpm --filter chrome-mcp-server exec wxt prepare
+
+      - name: Build shared package
+        run: pnpm build:shared
+
+      - name: Build native server
+        run: pnpm build:native
+
+      - name: Build extension
+        run: pnpm build:extension
+
+      - name: Package release artifacts
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          artifacts_dir="${GITHUB_WORKSPACE}/release-artifacts"
+          extension_asset="mcp-chrome-community-extension-${{ steps.meta.outputs.tag }}.zip"
+          native_asset="mcp-chrome-bridge-v${{ steps.meta.outputs.native_version }}.tgz"
+
+          rm -rf "${artifacts_dir}"
+          mkdir -p "${artifacts_dir}"
+
+          (
+            cd app/chrome-extension/.output/chrome-mv3
+            zip -r "${artifacts_dir}/${extension_asset}" .
+          )
+
+          (
+            cd app/native-server
+            npm pack --pack-destination "${artifacts_dir}"
+          )
+
+          native_source="$(find "${artifacts_dir}" -maxdepth 1 -name '*.tgz' -print -quit)"
+          if [ -z "${native_source}" ]; then
+            echo "Native server package was not created" >&2
+            exit 1
+          fi
+
+          mv "${native_source}" "${artifacts_dir}/${native_asset}"
+
+          (
+            cd "${artifacts_dir}"
+            sha256sum "${extension_asset}" "${native_asset}" > sha256sums.txt
+          )
+
+          echo "artifacts_dir=${artifacts_dir}" >> "${GITHUB_OUTPUT}"
+
+      - name: Extract release notes from changelog
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          changelog = Path("docs/CHANGELOG.md").read_text(encoding="utf-8")
+          pattern = rf"^## \[{re.escape(tag)}\](?: - .*)?\n(.*?)(?=^## \[|\Z)"
+          match = re.search(pattern, changelog, re.MULTILINE | re.DOTALL)
+
+          if not match:
+              raise SystemExit(f"Missing changelog section for {tag}")
+
+          Path("release-notes.md").write_text(match.group(1).strip() + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ steps.meta.outputs.tag }}
+          path: |
+            ${{ steps.package.outputs.artifacts_dir }}/*
+            release-notes.md
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.meta.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-artifacts/* --clobber
+            gh release edit "${RELEASE_TAG}" --title "${RELEASE_TITLE}" --notes-file release-notes.md
+          else
+            gh release create "${RELEASE_TAG}" release-artifacts/* \
+              --title "${RELEASE_TITLE}" \
+              --notes-file release-notes.md \
+              --target "${GITHUB_SHA}"
+          fi
