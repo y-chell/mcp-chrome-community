@@ -2,7 +2,8 @@ import { defineConfig } from 'wxt';
 import tailwindcss from '@tailwindcss/vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { config } from 'dotenv';
-import { resolve } from 'path';
+import { existsSync, readdirSync } from 'fs';
+import { relative, resolve, sep } from 'path';
 import Icons from 'unplugin-icons/vite';
 import Components from 'unplugin-vue-components/vite';
 import IconsResolver from 'unplugin-icons/resolver';
@@ -12,6 +13,7 @@ config({ path: resolve(process.cwd(), '.env.local') });
 
 const CHROME_EXTENSION_KEY = process.env.CHROME_EXTENSION_KEY;
 const WXT_OUT_DIR = process.env.WXT_OUT_DIR?.trim();
+const STATIC_ASSET_DIRS = ['inject-scripts', 'workers', '_locales'] as const;
 const MCP_HTTP_HOST = (process.env.CHROME_MCP_HOST || process.env.MCP_HTTP_HOST || '127.0.0.1')
   .trim()
   .replace(/^https?:\/\//, '')
@@ -19,10 +21,46 @@ const MCP_HTTP_HOST = (process.env.CHROME_MCP_HOST || process.env.MCP_HTTP_HOST 
 // Detect dev mode early for manifest-level switches
 const IS_DEV = process.env.NODE_ENV !== 'production' && process.env.MODE !== 'production';
 
+function collectStaticAssets(baseDirName: (typeof STATIC_ASSET_DIRS)[number]) {
+  const baseDir = resolve(process.cwd(), baseDirName);
+  if (!existsSync(baseDir)) return [];
+
+  const assets: Array<{ absoluteSrc: string; relativeDest: string }> = [];
+  const walk = (currentDir: string) => {
+    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+      const absolutePath = resolve(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(absolutePath);
+        continue;
+      }
+
+      if (entry.isFile()) {
+        const relativePath = relative(baseDir, absolutePath).split(sep).join('/');
+        assets.push({
+          absoluteSrc: absolutePath,
+          relativeDest: `${baseDirName}/${relativePath}`,
+        });
+      }
+    }
+  };
+
+  walk(baseDir);
+  return assets;
+}
+
+const STATIC_PUBLIC_ASSETS = STATIC_ASSET_DIRS.flatMap((dir) => collectStaticAssets(dir));
+
 // See https://wxt.dev/api/config.html
 export default defineConfig({
   outDir: WXT_OUT_DIR || undefined,
   modules: ['@wxt-dev/module-vue'],
+  hooks: {
+    // WXT reads web-accessible resources during the build, so copy these files
+    // through WXT's own public-asset pipeline instead of relying on Vite timing.
+    'build:publicAssets': (_, assets) => {
+      assets.push(...STATIC_PUBLIC_ASSETS);
+    },
+  },
   runner: {
     // 方案1: 禁用自动启动（推荐）
     disabled: true,
@@ -140,8 +178,7 @@ export default defineConfig({
         resolvers: [IconsResolver({ prefix: 'i', enabledCollections: ['lucide', 'mdi', 'ri'] })],
       }) as any,
       Icons({ compiler: 'vue3', autoInstall: false }) as any,
-      // Ensure static assets are available as early as possible to avoid race conditions in dev
-      // Copy workers/_locales/inject-scripts into the build output before other steps
+      // Keep helper scripts in sync during dev/watch mode.
       viteStaticCopy({
         targets: [
           {
@@ -157,8 +194,7 @@ export default defineConfig({
             dest: '_locales',
           },
         ],
-        // Copy before WXT finalizes the build so manifest/resource checks can see these files
-        hook: 'generateBundle',
+        hook: 'writeBundle',
         // Enable watch so changes to these files are reflected during dev
         watch: {
           // Use default patterns inferred from targets; explicit true enables watching
