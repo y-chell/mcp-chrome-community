@@ -11,6 +11,7 @@ config({ path: resolve(process.cwd(), '.env') });
 config({ path: resolve(process.cwd(), '.env.local') });
 
 const CHROME_EXTENSION_KEY = process.env.CHROME_EXTENSION_KEY;
+const WXT_OUT_DIR = process.env.WXT_OUT_DIR?.trim();
 const MCP_HTTP_HOST = (process.env.CHROME_MCP_HOST || process.env.MCP_HTTP_HOST || '127.0.0.1')
   .trim()
   .replace(/^https?:\/\//, '')
@@ -20,6 +21,7 @@ const IS_DEV = process.env.NODE_ENV !== 'production' && process.env.MODE !== 'pr
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
+  outDir: WXT_OUT_DIR || undefined,
   modules: ['@wxt-dev/module-vue'],
   runner: {
     // 方案1: 禁用自动启动（推荐）
@@ -155,8 +157,8 @@ export default defineConfig({
             dest: '_locales',
           },
         ],
-        // Use writeBundle so outDir exists for dev and prod
-        hook: 'writeBundle',
+        // Copy before WXT finalizes the build so manifest/resource checks can see these files
+        hook: 'generateBundle',
         // Enable watch so changes to these files are reflected during dev
         watch: {
           // Use default patterns inferred from targets; explicit true enables watching

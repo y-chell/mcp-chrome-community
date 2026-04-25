@@ -3,7 +3,7 @@
   "description": "a chrome extension to use your own chrome as a mcp server",
   "author": "mcp-chrome-community",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "repository": {
     "type": "git",

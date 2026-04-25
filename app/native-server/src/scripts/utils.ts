@@ -238,13 +238,24 @@ async function ensureWindowsFilePermissions(packageDistDir: string): Promise<voi
  */
 export async function createManifestContent(): Promise<any> {
   const mainPath = await getMainPath();
+  const extraExtensionIds = (
+    process.env.CHROME_EXTENSION_IDS ||
+    process.env.CHROME_EXTENSION_ID ||
+    ''
+  )
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const allowedOrigins = Array.from(new Set([EXTENSION_ID, ...extraExtensionIds])).map(
+    (extensionId) => `chrome-extension://${extensionId}/`,
+  );
 
   return {
     name: HOST_NAME,
     description: DESCRIPTION,
     path: mainPath, // Node.js可执行文件路径
     type: 'stdio',
-    allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
+    allowed_origins: allowedOrigins,
   };
 }
 

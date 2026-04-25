@@ -5,7 +5,7 @@ export const createMcpServer = () => {
   const server = new Server(
     {
       name: 'ChromeMcpServer',
-      version: '1.0.0',
+      version: '1.0.30',
     },
     {
       capabilities: {

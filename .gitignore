@@ -12,6 +12,7 @@ node_modules
 stats.html
 stats-*.json
 .wxt
+.output-community
 web-ext.config.ts
 dist
 app/native-server/*.tgz
