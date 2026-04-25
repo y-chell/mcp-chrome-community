@@ -1,5 +1,8 @@
 name: Build and Publish Release
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 on:
   push:
     tags:
@@ -59,7 +62,7 @@ jobs:
           echo "native_version=${native_version}" >> "${GITHUB_OUTPUT}"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
 
       - name: Prepare extension
         run: pnpm --filter chrome-mcp-server exec wxt prepare
