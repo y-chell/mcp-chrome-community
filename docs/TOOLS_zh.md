@@ -1,4 +1,4 @@
-# Chrome MCP Server API 参考 📚
+# mcp-chrome-community API 参考 📚
 
 所有可用工具及其参数的完整参考。
 

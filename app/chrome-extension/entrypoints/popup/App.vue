@@ -4,7 +4,7 @@
     <div v-show="currentView === 'home'" class="home-view">
       <div class="header">
         <div class="header-content">
-          <h1 class="header-title">Chrome MCP Server</h1>
+          <h1 class="header-title">mcp-chrome-community</h1>
         </div>
       </div>
       <div class="content">
@@ -258,7 +258,7 @@
             Docs
           </button>
         </div>
-        <p class="footer-text">chrome mcp server for ai</p>
+        <p class="footer-text">mcp-chrome-community for ai</p>
       </div>
     </div>
 

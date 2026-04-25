@@ -5,13 +5,13 @@ import { LINKS, NATIVE_HOST, getLocalMcpUrl } from '@/common/constants';
 import '../sidepanel/styles/agent-chat.css';
 
 const COMMANDS = {
-  npmInstall: 'npm install -g mcp-chrome-bridge',
-  pnpmInstall: 'pnpm add -g mcp-chrome-bridge',
-  yarnInstall: 'yarn global add mcp-chrome-bridge',
+  npmInstall: 'npm install -g mcp-chrome-community-bridge',
+  pnpmInstall: 'pnpm add -g mcp-chrome-community-bridge',
+  yarnInstall: 'yarn global add mcp-chrome-community-bridge',
   mcpUrl: getLocalMcpUrl(NATIVE_HOST.DEFAULT_PORT),
-  doctor: 'mcp-chrome-bridge doctor',
-  fix: 'mcp-chrome-bridge doctor --fix',
-  report: 'mcp-chrome-bridge report --copy',
+  doctor: 'mcp-chrome-community doctor',
+  fix: 'mcp-chrome-community doctor --fix',
+  report: 'mcp-chrome-community report --copy',
 } as const;
 
 type CommandKey = keyof typeof COMMANDS;
@@ -85,7 +85,7 @@ async function openDocs(): Promise<void> {
             </div>
             <div class="min-w-0">
               <h1 class="welcome-title text-lg font-medium tracking-tight truncate">
-                Chrome MCP Server
+                mcp-chrome-community
               </h1>
               <p class="welcome-muted text-sm truncate">
                 After the extension is installed, this is the only required step.
@@ -106,7 +106,7 @@ async function openDocs(): Promise<void> {
         <div class="max-w-3xl mx-auto space-y-6">
           <section class="welcome-card welcome-card--primary p-6">
             <h2 class="welcome-title text-xl font-medium">
-              Install <code class="welcome-code">mcp-chrome-bridge</code>
+              Install <code class="welcome-code">mcp-chrome-community-bridge</code>
             </h2>
             <p class="welcome-muted text-sm mt-2">
               The Chrome extension uses this local bridge to expose MCP tools to your client.

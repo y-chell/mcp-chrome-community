@@ -64,8 +64,8 @@ export const getStdioMcpServer = () => {
   }
   stdioMcpServer = new Server(
     {
-      name: 'StdioChromeMcpServer',
-      version: '1.0.30',
+      name: 'mcp-chrome-community-stdio-server',
+      version: '1.0.2',
     },
     {
       capabilities: {
@@ -89,7 +89,10 @@ export const ensureMcpClient = async () => {
       }
     }
 
-    mcpClient = new Client({ name: 'Mcp Chrome Proxy', version: '1.0.30' }, { capabilities: {} });
+    mcpClient = new Client(
+      { name: 'mcp-chrome-community-proxy', version: '1.0.2' },
+      { capabilities: {} },
+    );
     const transport = new StreamableHTTPClientTransport(resolveMcpServerUrl(), {});
     await mcpClient.connect(transport);
     return mcpClient;
@@ -147,6 +150,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Fatal error Chrome MCP Server main():', error);
+  console.error('Fatal error mcp-chrome-community main():', error);
   process.exit(1);
 });

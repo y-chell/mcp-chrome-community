@@ -1,6 +1,6 @@
 # Contributing Guide 🤝
 
-Thank you for your interest in contributing to the community-maintained Chrome MCP Server fork. This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to the community-maintained mcp-chrome-community fork. This document provides guidelines and information for contributors.
 
 ## 🎯 How to Contribute
 
@@ -219,7 +219,7 @@ pnpm build
 
 ## 📄 License
 
-By contributing to Chrome MCP Server, you agree that your contributions will be licensed under the MIT License.
+By contributing to mcp-chrome-community, you agree that your contributions will be licensed under the MIT License.
 
 ## 🎯 Contributor Guidelines
 
@@ -262,4 +262,4 @@ We value every contribution, no matter how big or small. Contributors will be re
 - **Contributor badges**: Contributor badges on GitHub profiles
 - **Community recognition**: Special thanks in community discussions
 
-Thank you for considering contributing to Chrome MCP Server! Your participation makes this project better.
+Thank you for considering contributing to mcp-chrome-community! Your participation makes this project better.

@@ -17,8 +17,8 @@ List the exact commands you ran, or explain why no local validation was needed.
 
 ```bash
 # example
-pnpm --filter mcp-chrome-bridge exec jest src/mcp/mcp-server.test.ts --runInBand --coverage=false
-pnpm --filter mcp-chrome-bridge exec tsc --noEmit
+pnpm --filter mcp-chrome-community-bridge exec jest src/mcp/mcp-server.test.ts --runInBand --coverage=false
+pnpm --filter mcp-chrome-community-bridge exec tsc --noEmit
 ```
 
 ## Compatibility / risk

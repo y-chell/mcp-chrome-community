@@ -15,7 +15,7 @@ afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
 });
 
-describe('chrome mcp endpoint config', () => {
+describe('mcp-chrome-community endpoint config', () => {
   test('prefers CHROME_MCP_HOST and CHROME_MCP_PORT when building url', () => {
     process.env[CHROME_MCP_HOST_ENV] = '192.168.1.20';
     process.env[CHROME_MCP_PORT_ENV] = '4567';

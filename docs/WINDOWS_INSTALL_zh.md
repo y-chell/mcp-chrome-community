@@ -1,6 +1,6 @@
 # windows 安装指南 🔧
 
-Chrome MCP Server 在windows电脑的详细安装和配置步骤
+mcp-chrome-community 在windows电脑的详细安装和配置步骤
 
 ## 📋 安装
 
@@ -13,17 +13,17 @@ Chrome MCP Server 在windows电脑的详细安装和配置步骤
 先确认你电脑上已经装了 Node.js。最低 Node.js 20，推荐 Node.js 22 或 24 LTS。
 
 ```bash
-npm install -g .\mcp-chrome-bridge-v<version>.tgz
+npm install -g .\mcp-chrome-community-bridge-v<version>.tgz
 ```
 
 如果你用 pnpm：
 
 ```bash
-pnpm add -g .\mcp-chrome-bridge-v<version>.tgz
-mcp-chrome-bridge register
+pnpm add -g .\mcp-chrome-community-bridge-v<version>.tgz
+mcp-chrome-community register
 ```
 
-> 这个社区版建议直接安装 GitHub Release 里的 `.tgz`，不要直接跑 `npm install -g mcp-chrome-bridge`。
+> 这个社区版建议直接安装 GitHub Release 里的 `.tgz`，不要直接跑 `npm install -g mcp-chrome-community-bridge`。
 
 3. **加载 Chrome 扩展**
    - 先把 `mcp-chrome-community-extension-<version>.zip` 解压出来
@@ -32,7 +32,7 @@ mcp-chrome-bridge register
    - 点击"加载已解压的扩展程序"，选择解压后的扩展目录
    - 点击插件图标打开插件，点击连接即可看到mcp的配置
 
-<img width="420" alt="Chrome MCP 扩展弹窗连接成功后显示 MCP 配置" src="./images/readme-extension-connect.png" />
+<img width="420" alt="mcp-chrome-community 扩展弹窗连接成功后显示 MCP 配置" src="./images/readme-extension-connect.png" />
 
 4. **在 CherryStudio 中使用**
 
@@ -62,21 +62,21 @@ mcp-chrome-bridge register
 如果遇到问题，运行诊断工具：
 
 ```bash
-mcp-chrome-bridge doctor
+mcp-chrome-community doctor
 ```
 
 自动修复常见问题：
 
 ```bash
-mcp-chrome-bridge doctor --fix
+mcp-chrome-community doctor --fix
 ```
 
 ### 点击扩展的连接按钮后如果没连接成功
 
-1. **检查mcp-chrome-bridge是否安装成功**，确保是全局安装的
+1. **检查 mcp-chrome-community-bridge 是否安装成功**，确保是全局安装的
 
 ```bash
-mcp-chrome-bridge -V
+mcp-chrome-community -V
 ```
 
 <img width="612" alt="截屏2025-06-11 15 09 57" src="https://github.com/user-attachments/assets/59458532-e6e1-457c-8c82-3756a5dbb28e" />
@@ -87,9 +87,9 @@ mcp-chrome-bridge -V
 
 3. **检查日志**
 
-日志现在存储在用户目录：`%LOCALAPPDATA%\mcp-chrome-bridge\logs\`
+日志现在存储在用户目录：`%LOCALAPPDATA%\mcp-chrome-community\logs\`
 
-例如：`C:\Users\xxx\AppData\Local\mcp-chrome-bridge\logs\`
+例如：`C:\Users\xxx\AppData\Local\mcp-chrome-community\logs\`
 
 <img width="804" alt="截屏2025-06-11 15 09 41" src="https://github.com/user-attachments/assets/ce7b7c94-7c84-409a-8210-c9317823aae1" />
 
@@ -101,4 +101,4 @@ mcp-chrome-bridge -V
 set CHROME_MCP_NODE_PATH=C:\path\to\your\node.exe
 ```
 
-或者运行 `mcp-chrome-bridge doctor --fix` 自动写入当前 Node 路径。
+或者运行 `mcp-chrome-community doctor --fix` 自动写入当前 Node 路径。

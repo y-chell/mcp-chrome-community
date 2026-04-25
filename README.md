@@ -1,4 +1,4 @@
-# Chrome MCP Server 🚀
+# mcp-chrome-community 🚀
 
 [![Stars](https://img.shields.io/github/stars/y-chell/mcp-chrome-community)](https://github.com/y-chell/mcp-chrome-community)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -20,9 +20,9 @@
 
 ---
 
-## 🎯 What is Chrome MCP Server?
+## 🎯 What is mcp-chrome-community?
 
-Chrome MCP Server is a Chrome extension-based **Model Context Protocol (MCP) server** that exposes your Chrome browser functionality to AI assistants like Claude, enabling complex browser automation, content analysis, and semantic search. Unlike traditional browser automation tools (like Playwright), **Chrome MCP Server** directly uses your daily Chrome browser, leveraging existing user habits, configurations, and login states, allowing various large models or chatbots to take control of your browser and truly become your everyday assistant.
+mcp-chrome-community is a Chrome extension-based **Model Context Protocol (MCP) server** that exposes your Chrome browser functionality to AI assistants like Claude, enabling complex browser automation, content analysis, and semantic search. Unlike traditional browser automation tools (like Playwright), **mcp-chrome-community** directly uses your daily Chrome browser, leveraging existing user habits, configurations, and login states, allowing various large models or chatbots to take control of your browser and truly become your everyday assistant.
 
 ## ✨ Featured Addition
 
@@ -70,25 +70,25 @@ Download link: https://github.com/y-chell/mcp-chrome-community/releases
 You need these two files from the latest release:
 
 - `mcp-chrome-community-extension-<version>.zip`
-- `mcp-chrome-bridge-v<version>.tgz`
+- `mcp-chrome-community-bridge-v<version>.tgz`
 
 2. **Install the native host from the downloaded `.tgz`**
 
 npm
 
 ```bash
-npm install -g /path/to/mcp-chrome-bridge-v<version>.tgz
+npm install -g /path/to/mcp-chrome-community-bridge-v<version>.tgz
 ```
 
 pnpm
 
 ```bash
 # pnpm users should run register once after installing from the release package
-pnpm add -g /path/to/mcp-chrome-bridge-v<version>.tgz
-mcp-chrome-bridge register
+pnpm add -g /path/to/mcp-chrome-community-bridge-v<version>.tgz
+mcp-chrome-community register
 ```
 
-> This community fork is installed from the GitHub Release `.tgz` asset. `npm install -g mcp-chrome-bridge` may install a different package than the one in this repository.
+> This community fork is installed from the GitHub Release `.tgz` asset. `npm install -g mcp-chrome-community-bridge` may install a different package than the one in this repository.
 
 3. **Load Chrome Extension**
    - Extract `mcp-chrome-community-extension-<version>.zip` first
@@ -97,7 +97,7 @@ mcp-chrome-bridge register
    - Click "Load unpacked" and select the extracted extension folder
    - Click the extension icon to open the plugin, then click connect to see the MCP configuration
 
-<img width="420" alt="Chrome MCP extension popup showing the MCP config after connecting" src="docs/images/readme-extension-connect.png" />
+<img width="420" alt="mcp-chrome-community extension popup showing the MCP config after connecting" src="docs/images/readme-extension-connect.png" />
 
 If you want to build from source instead of using release assets, see [Contributing Guide](docs/CONTRIBUTING.md).
 
@@ -112,7 +112,7 @@ Add the following configuration to your MCP client configuration (using CherrySt
 ```json
 {
   "mcpServers": {
-    "chrome-mcp-server": {
+    "mcp-chrome-community": {
       "type": "streamableHttp",
       "url": "http://127.0.0.1:12306/mcp"
     }
@@ -138,13 +138,13 @@ pnpm root -g
 Then append:
 
 ```text
-mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js
+mcp-chrome-community-bridge/dist/mcp/mcp-server-stdio.js
 ```
 
 Example final path:
 
 ```text
-/path/to/global/node_modules/mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js
+/path/to/global/node_modules/mcp-chrome-community-bridge/dist/mcp/mcp-server-stdio.js
 ```
 
 2. Replace the configuration below with the final path you just obtained
@@ -152,9 +152,11 @@ Example final path:
 ```json
 {
   "mcpServers": {
-    "chrome-mcp-stdio": {
+    "mcp-chrome-community-stdio": {
       "command": "node",
-      "args": ["/path/to/global/node_modules/mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js"]
+      "args": [
+        "/path/to/global/node_modules/mcp-chrome-community-bridge/dist/mcp/mcp-server-stdio.js"
+      ]
     }
   }
 }

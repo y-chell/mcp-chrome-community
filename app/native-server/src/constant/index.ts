@@ -53,7 +53,7 @@ export const ERROR_MESSAGES = {
 } as const;
 
 // ============================================================
-// Chrome MCP Server Configuration
+// mcp-chrome-community configuration
 // ============================================================
 
 /**

@@ -59,7 +59,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile --ignore-scripts
 
       - name: Prepare extension
-        run: pnpm --filter chrome-mcp-server exec wxt prepare
+        run: pnpm --filter mcp-chrome-community-extension exec wxt prepare
 
       - name: Build shared package
         run: pnpm build:shared
@@ -78,7 +78,7 @@ jobs:
 
           artifacts_dir="${GITHUB_WORKSPACE}/release-artifacts"
           extension_asset="mcp-chrome-community-extension-${{ steps.meta.outputs.tag }}.zip"
-          native_asset="mcp-chrome-bridge-v${{ steps.meta.outputs.native_version }}.tgz"
+          native_asset="mcp-chrome-community-bridge-v${{ steps.meta.outputs.native_version }}.tgz"
 
           rm -rf "${artifacts_dir}"
           mkdir -p "${artifacts_dir}"
