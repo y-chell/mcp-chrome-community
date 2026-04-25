@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Release direction**: Upcoming community releases prioritize connection stability, compatibility fixes, and reviewed pull requests before adding new tools
 - **CI runtime**: Release workflow now runs on Node.js 24 and avoids deprecated Node 20-based GitHub Action runtimes for pnpm setup
 
+### Fixed
+
+- **Release bootstrap order**: GitHub Actions no longer asks `actions/setup-node` to initialize pnpm caching before `pnpm` is installed, preventing `Unable to locate executable file: pnpm` on tag-triggered releases
+
 ### Added
 
 - **GitHub Release automation**: `v*` tags and manual dispatch now build release assets, publish them to GitHub Releases, and attach SHA-256 checksums
