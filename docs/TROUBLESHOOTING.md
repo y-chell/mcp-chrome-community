@@ -57,6 +57,8 @@ Mac path: /Users/xxx/Library/Application\ Support/Google/Chrome/NativeMessagingH
 
 If the npm package is installed correctly, a file named `com.chromemcp.nativehost.json` should be generated in this directory
 
+If you installed the official GitHub Release extension asset, the unpacked extension ID should stay stable. If you built the extension yourself without `CHROME_EXTENSION_KEY`, Chrome will assign a different ID and `allowed_origins` in this manifest will no longer match.
+
 3. **Check logs**
    Logs are now stored in user-writable directories:
 

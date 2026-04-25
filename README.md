@@ -97,6 +97,8 @@ mcp-chrome-community register
    - Click "Load unpacked" and select the extracted extension folder
    - Click the extension icon to open the plugin, then click connect to see the MCP configuration
 
+   Release builds keep a fixed unpacked extension ID for Native Messaging. If you build the extension yourself without `CHROME_EXTENSION_KEY`, Chrome will assign a different ID and the default native host manifest will not match.
+
 <img width="420" alt="mcp-chrome-community extension popup showing the MCP config after connecting" src="docs/images/readme-extension-connect.png" />
 
 If you want to build from source instead of using release assets, see [Contributing Guide](docs/CONTRIBUTING.md).

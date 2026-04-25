@@ -58,7 +58,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile --ignore-scripts
 
+      - name: Validate release extension key
+        env:
+          CHROME_EXTENSION_KEY: ${{ secrets.CHROME_EXTENSION_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CHROME_EXTENSION_KEY:-}" ]; then
+            echo "Missing CHROME_EXTENSION_KEY GitHub Actions secret. Release builds must keep the stable unpacked extension ID for Native Messaging." >&2
+            exit 1
+          fi
+
       - name: Prepare extension
+        env:
+          CHROME_EXTENSION_KEY: ${{ secrets.CHROME_EXTENSION_KEY }}
+          REQUIRE_CHROME_EXTENSION_KEY: '1'
         run: pnpm --filter mcp-chrome-community-extension exec wxt prepare
 
       - name: Build shared package
@@ -68,6 +83,9 @@ jobs:
         run: pnpm build:native
 
       - name: Build extension
+        env:
+          CHROME_EXTENSION_KEY: ${{ secrets.CHROME_EXTENSION_KEY }}
+          REQUIRE_CHROME_EXTENSION_KEY: '1'
         run: pnpm build:extension
 
       - name: Package release artifacts

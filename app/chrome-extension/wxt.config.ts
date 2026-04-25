@@ -1,6 +1,7 @@
 import { defineConfig } from 'wxt';
 import tailwindcss from '@tailwindcss/vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
+import { createHash } from 'crypto';
 import { config } from 'dotenv';
 import { existsSync, readdirSync } from 'fs';
 import { relative, resolve, sep } from 'path';
@@ -11,7 +12,11 @@ import IconsResolver from 'unplugin-icons/resolver';
 config({ path: resolve(process.cwd(), '.env') });
 config({ path: resolve(process.cwd(), '.env.local') });
 
-const CHROME_EXTENSION_KEY = process.env.CHROME_EXTENSION_KEY;
+const CHROME_EXTENSION_KEY = process.env.CHROME_EXTENSION_KEY?.trim();
+const REQUIRE_CHROME_EXTENSION_KEY = /^(1|true|yes)$/i.test(
+  process.env.REQUIRE_CHROME_EXTENSION_KEY?.trim() || '',
+);
+const EXPECTED_CHROME_EXTENSION_ID = 'hbdgbgagpkpjffpklnamcljpakneikee';
 const WXT_OUT_DIR = process.env.WXT_OUT_DIR?.trim();
 const STATIC_ASSET_DIRS = ['inject-scripts', 'workers', '_locales'] as const;
 const MCP_HTTP_HOST = (process.env.CHROME_MCP_HOST || process.env.MCP_HTTP_HOST || '127.0.0.1')
@@ -20,6 +25,46 @@ const MCP_HTTP_HOST = (process.env.CHROME_MCP_HOST || process.env.MCP_HTTP_HOST 
   .replace(/\/+$/, '');
 // Detect dev mode early for manifest-level switches
 const IS_DEV = process.env.NODE_ENV !== 'production' && process.env.MODE !== 'production';
+
+function deriveChromeExtensionIdFromKey(key: string): string {
+  const hash = createHash('sha256').update(Buffer.from(key, 'base64')).digest();
+  const alphabet = 'abcdefghijklmnop';
+  let extensionId = '';
+
+  for (let index = 0; index < 16; index += 1) {
+    const value = hash[index];
+    extensionId += alphabet[value >> 4] + alphabet[value & 0x0f];
+  }
+
+  return extensionId;
+}
+
+function validateReleaseExtensionKey(key: string | undefined): void {
+  if (!REQUIRE_CHROME_EXTENSION_KEY) return;
+
+  if (!key || key === 'YOUR_PRIVATE_KEY_HERE') {
+    throw new Error(
+      `CHROME_EXTENSION_KEY is required for release builds so the extension keeps the stable ID ${EXPECTED_CHROME_EXTENSION_ID}.`,
+    );
+  }
+
+  let derivedId: string;
+  try {
+    derivedId = deriveChromeExtensionIdFromKey(key);
+  } catch (error) {
+    throw new Error(
+      `CHROME_EXTENSION_KEY is invalid: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  if (derivedId !== EXPECTED_CHROME_EXTENSION_ID) {
+    throw new Error(
+      `CHROME_EXTENSION_KEY resolves to ${derivedId}, expected ${EXPECTED_CHROME_EXTENSION_ID}. Update the release secret or native host EXTENSION_ID before publishing.`,
+    );
+  }
+}
+
+validateReleaseExtensionKey(CHROME_EXTENSION_KEY);
 
 function collectStaticAssets(baseDirName: (typeof STATIC_ASSET_DIRS)[number]) {
   const baseDir = resolve(process.cwd(), baseDirName);

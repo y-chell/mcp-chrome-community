@@ -51,6 +51,12 @@ pnpm dev
    - Enable "Developer mode"
    - Click "Load unpacked" and select `app/chrome-extension/.output/chrome-mv3`
 
+### Release Note
+
+- GitHub Release builds must provide the repository secret `CHROME_EXTENSION_KEY`.
+- That key is what keeps the unpacked extension ID stable for Native Messaging.
+- If you rotate that key, you must update the native host `EXTENSION_ID` and the install/troubleshooting docs in the same release.
+
 ## 🏗️ Project Structure
 
 ```

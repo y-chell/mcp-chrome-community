@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Release extension ID stability**: Release builds now require a valid `CHROME_EXTENSION_KEY` and verify that it resolves to the stable unpacked extension ID used by the Native Messaging host, preventing broken release zips that fail to connect after "Load unpacked"
+
+### Documentation
+
+- **Extension ID troubleshooting**: README, Windows install docs, troubleshooting docs, and contributing docs now explain why custom builds without `CHROME_EXTENSION_KEY` get a different extension ID and break Native Messaging by default
+
 ## [v1.0.2] - 2026-04-25
 
 ### Changed

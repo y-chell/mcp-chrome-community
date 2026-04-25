@@ -75,6 +75,8 @@ mac路径： /Users/xxx/Library/Application\ Support/Google/Chrome/NativeMessagi
 
 > 如果发现没有此清单文件，可以尝试命令行执行：`mcp-chrome-community register`
 
+> 如果你装的是 GitHub Release 里的扩展包，扩展 ID 应该会保持固定。只有你自己从源码构建、并且没设置 `CHROME_EXTENSION_KEY` 时，Chrome 才会生成新的扩展 ID，导致这里的 `allowed_origins` 对不上。
+
 2. **检查日志**
 
 日志现在存储在用户可写目录：
@@ -102,6 +104,8 @@ export CHROME_MCP_NODE_PATH=/path/to/your/node
 或者运行 `mcp-chrome-community doctor --fix` 来写入当前 Node 路径。
 
 3.3 如果排除了以上两种原因都不行，则查看日志目录的日志，然后提issue
+
+3.4 如果点击 Connect 完全没反应，再看一下是不是扩展 ID 变了。官方 release 现在会固定扩展 ID；源码自建如果没带 `CHROME_EXTENSION_KEY`，默认 Native Messaging 清单不会认这个新 ID。
 
 ### 日志位置
 

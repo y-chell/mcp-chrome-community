@@ -51,6 +51,12 @@ pnpm dev
    - 启用"开发者模式"
    - 点击"加载已解压的扩展程序"，选择 `app/chrome-extension/.output/chrome-mv3`
 
+### Release 说明
+
+- GitHub Release 构建必须配置仓库 Secret：`CHROME_EXTENSION_KEY`。
+- 这个 key 用来固定未打包扩展的 ID，Native Messaging 才能稳定匹配。
+- 如果你要换这个 key，必须同时更新 native host 里的 `EXTENSION_ID`，并一起改安装文档和排障文档。
+
 ## 🏗️ 项目结构
 
 ```

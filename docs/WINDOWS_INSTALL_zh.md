@@ -32,6 +32,8 @@ mcp-chrome-community register
    - 点击"加载已解压的扩展程序"，选择解压后的扩展目录
    - 点击插件图标打开插件，点击连接即可看到mcp的配置
 
+正常使用 GitHub Release 的扩展包，不需要再手动改 `allowed_origins`。如果你是自己从源码构建扩展但没设置 `CHROME_EXTENSION_KEY`，Chrome 会生成新的扩展 ID，Native Messaging 默认清单就会连不上。
+
 <img width="420" alt="mcp-chrome-community 扩展弹窗连接成功后显示 MCP 配置" src="./images/readme-extension-connect.png" />
 
 4. **在 CherryStudio 中使用**
@@ -102,3 +104,7 @@ set CHROME_MCP_NODE_PATH=C:\path\to\your\node.exe
 ```
 
 或者运行 `mcp-chrome-community doctor --fix` 自动写入当前 Node 路径。
+
+5. **扩展 ID 对不上**
+
+如果你不是用 GitHub Release 的扩展包，而是自己构建了一个未打包扩展，先确认构建时有没有设置 `CHROME_EXTENSION_KEY`。没有的话，Chrome 会给这个扩展分配一个新的 ID，点击 Connect 时就会像“没反应”一样，因为 Native Messaging 清单默认只认发布版的固定 ID。

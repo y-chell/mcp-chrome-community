@@ -95,6 +95,8 @@ mcp-chrome-community register
    - 点击"加载已解压的扩展程序"，选择刚刚解压出来的扩展目录
    - 点击插件图标打开插件，点击连接即可看到mcp的配置
 
+   Release 包现在会固定未打包扩展的 ID，正常按 release 安装不用手动改 `allowed_origins`。如果你自己从源码构建但没设置 `CHROME_EXTENSION_KEY`，Chrome 会生成一个新的扩展 ID，默认的 Native Messaging 清单就对不上。
+
 <img width="420" alt="mcp-chrome-community 扩展弹窗连接成功后显示 MCP 配置" src="docs/images/readme-extension-connect.png" />
 
 如果你要从源码构建，不走 release 安装，直接看 [贡献指南](docs/CONTRIBUTING_zh.md)。
