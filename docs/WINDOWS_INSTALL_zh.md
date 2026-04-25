@@ -8,18 +8,28 @@ Chrome MCP Server 在windows电脑的详细安装和配置步骤
 
 下载地址：https://github.com/y-chell/mcp-chrome-community/releases
 
-2. **全局安装mcp-chrome-bridge**
+2. **安装原生宿主**
 
-确保电脑上已经安装了node，如果没安装请自行先安装
+先确认你电脑上已经装了 Node.js。最低 Node.js 20，推荐 Node.js 22 或 24 LTS。
 
 ```bash
-npm install -g mcp-chrome-bridge
+npm install -g .\mcp-chrome-bridge-v<version>.tgz
 ```
 
+如果你用 pnpm：
+
+```bash
+pnpm add -g .\mcp-chrome-bridge-v<version>.tgz
+mcp-chrome-bridge register
+```
+
+> 这个社区版建议直接安装 GitHub Release 里的 `.tgz`，不要直接跑 `npm install -g mcp-chrome-bridge`。
+
 3. **加载 Chrome 扩展**
+   - 先把 `mcp-chrome-community-extension-<version>.zip` 解压出来
    - 打开 Chrome 并访问 `chrome://extensions/`
    - 启用"开发者模式"
-   - 点击"加载已解压的扩展程序"，选择 `your/dowloaded/extension/folder`
+   - 点击"加载已解压的扩展程序"，选择解压后的扩展目录
    - 点击插件图标打开插件，点击连接即可看到mcp的配置
      <img width="475" alt="截屏2025-06-09 15 52 06" src="https://github.com/user-attachments/assets/241e57b8-c55f-41a4-9188-0367293dc5bc" />
 

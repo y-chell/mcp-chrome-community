@@ -1,6 +1,6 @@
 # 贡献指南 🤝
 
-感谢您对 Chrome MCP Server 项目的贡献兴趣！本文档为贡献者提供指南和信息。
+感谢您对这个社区维护版 Chrome MCP Server fork 的贡献兴趣。本文档为贡献者提供指南和信息。
 
 ## 🎯 如何贡献
 
@@ -17,7 +17,9 @@
 
 ### 环境要求
 
-- **Node.js 20+** 和 **pnpm**（最新版本）
+- **Node.js 20+** 是最低要求，推荐 **Node.js 22 或 24 LTS**
+- **CI 目前使用 Node.js 24**
+- 工作区开发推荐 **pnpm 10+**
 - **Chrome/Chromium** 浏览器用于测试
 - **Git** 版本控制
 - **Rust**（用于 WASM 开发，可选）
@@ -28,8 +30,8 @@
 1. **Fork 并克隆仓库**
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/chrome-mcp-server.git
-cd chrome-mcp-server
+git clone https://github.com/y-chell/mcp-chrome-community.git
+cd mcp-chrome-community
 ```
 
 2. **安装依赖**
@@ -41,18 +43,18 @@ pnpm install
 3. **启动项目**
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 4. **在 Chrome 中加载扩展**
    - 打开 `chrome://extensions/`
    - 启用"开发者模式"
-   - 点击"加载已解压的扩展程序"，选择 `your/extension/dist`
+   - 点击"加载已解压的扩展程序"，选择 `app/chrome-extension/.output/chrome-mv3`
 
 ## 🏗️ 项目结构
 
 ```
-chrome-mcp-server/
+mcp-chrome-community/
 ├── app/
 │   ├── chrome-extension/     # Chrome 扩展 (WXT + Vue 3)
 │   │   ├── entrypoints/      # 后台脚本、弹窗、内容脚本

@@ -55,43 +55,50 @@ Chrome MCP Server is a Chrome extension-based **Model Context Protocol (MCP) ser
 
 ### Prerequisites
 
-- Node.js >= 20.0.0 and pnpm/npm
+- Node.js 20+ (minimum)
+- Node.js 22 or 24 LTS recommended
+- CI and release builds currently run on Node.js 24
+- Node.js 25 may work, but it is not part of the tested support matrix yet
 - Chrome/Chromium browser
 
 ### Installation Steps
 
-1. **Download the latest Chrome extension from GitHub**
+1. **Download the latest release assets from GitHub**
 
 Download link: https://github.com/y-chell/mcp-chrome-community/releases
 
-2. **Install mcp-chrome-bridge globally**
+You need these two files from the latest release:
+
+- `mcp-chrome-community-extension-<version>.zip`
+- `mcp-chrome-bridge-v<version>.tgz`
+
+2. **Install the native host from the downloaded `.tgz`**
 
 npm
 
 ```bash
-npm install -g mcp-chrome-bridge
+npm install -g /path/to/mcp-chrome-bridge-v<version>.tgz
 ```
 
 pnpm
 
 ```bash
-# Method 1: Enable scripts globally (recommended)
-pnpm config set enable-pre-post-scripts true
-pnpm install -g mcp-chrome-bridge
-
-# Method 2: Manual registration (if postinstall doesn't run)
-pnpm install -g mcp-chrome-bridge
+# pnpm users should run register once after installing from the release package
+pnpm add -g /path/to/mcp-chrome-bridge-v<version>.tgz
 mcp-chrome-bridge register
 ```
 
-> Note: pnpm v7+ disables postinstall scripts by default for security. The `enable-pre-post-scripts` setting controls whether pre/post install scripts run. If automatic registration fails, use the manual registration command above.
+> This community fork is installed from the GitHub Release `.tgz` asset. `npm install -g mcp-chrome-bridge` may install a different package than the one in this repository.
 
 3. **Load Chrome Extension**
+   - Extract `mcp-chrome-community-extension-<version>.zip` first
    - Open Chrome and go to `chrome://extensions/`
    - Enable "Developer mode"
-   - Click "Load unpacked" and select `your/dowloaded/extension/folder`
+   - Click "Load unpacked" and select the extracted extension folder
    - Click the extension icon to open the plugin, then click connect to see the MCP configuration
      <img width="475" alt="Screenshot 2025-06-09 15 52 06" src="https://github.com/user-attachments/assets/241e57b8-c55f-41a4-9188-0367293dc5bc" />
+
+If you want to build from source instead of using release assets, see [Contributing Guide](docs/CONTRIBUTING.md).
 
 ### Usage with MCP Protocol Clients
 
@@ -118,17 +125,26 @@ Default URL is `http://127.0.0.1:12306/mcp`. If you override host or port with `
 
 If your client only supports stdio connection method, please use the following approach:
 
-1. First, check the installation location of the npm package you just installed
+1. First, find your global `node_modules` directory
 
 ```sh
-# npm check method
-npm list -g mcp-chrome-bridge
-# pnpm check method
-pnpm list -g mcp-chrome-bridge
+# npm
+npm root -g
+# pnpm
+pnpm root -g
 ```
 
-Assuming the command above outputs the path: /Users/xxx/Library/pnpm/global/5
-Then your final path would be: /Users/xxx/Library/pnpm/global/5/node_modules/mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js
+Then append:
+
+```text
+mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js
+```
+
+Example final path:
+
+```text
+/path/to/global/node_modules/mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js
+```
 
 2. Replace the configuration below with the final path you just obtained
 
@@ -136,17 +152,14 @@ Then your final path would be: /Users/xxx/Library/pnpm/global/5/node_modules/mcp
 {
   "mcpServers": {
     "chrome-mcp-stdio": {
-      "command": "npx",
-      "args": [
-        "node",
-        "/Users/xxx/Library/pnpm/global/5/node_modules/mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js"
-      ]
+      "command": "node",
+      "args": ["/path/to/global/node_modules/mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js"]
     }
   }
 }
 ```
 
-eg：config in augment:
+Example config in Augment:
 
 <img width="494" alt="截屏2025-06-22 22 11 25" src="https://github.com/user-attachments/assets/48eefc0c-a257-4d3b-8bbe-d7ff716de2bf" />
 

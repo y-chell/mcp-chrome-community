@@ -11,10 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Community-maintained fork**: Project maintenance is now continued at `y-chell/mcp-chrome-community`
 - **Release direction**: Upcoming community releases prioritize connection stability, compatibility fixes, and reviewed pull requests before adding new tools
+- **CI runtime**: Release workflow now runs on Node.js 24 and avoids deprecated Node 20-based GitHub Action runtimes for pnpm setup
 
 ### Added
 
 - **GitHub Release automation**: `v*` tags and manual dispatch now build release assets, publish them to GitHub Releases, and attach SHA-256 checksums
+
+### Documentation
+
+- **Install path clarity**: README and Windows install docs now tell users to install the community fork from GitHub Release assets instead of the npm registry package name
+- **Node support policy**: README and contributing docs now distinguish minimum support (Node.js 20), recommended versions (Node.js 22/24 LTS), and the current untested status of Node.js 25
 
 ## [v1.0.1] - 2026-04-25
 

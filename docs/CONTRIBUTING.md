@@ -1,6 +1,6 @@
 # Contributing Guide 🤝
 
-Thank you for your interest in contributing to Chrome MCP Server! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to the community-maintained Chrome MCP Server fork. This document provides guidelines and information for contributors.
 
 ## 🎯 How to Contribute
 
@@ -17,7 +17,9 @@ We welcome contributions in many forms:
 
 ### Prerequisites
 
-- **Node.js 20+** and **pnpm or npm** (latest version)
+- **Node.js 20+** minimum, **Node.js 22 or 24 LTS** recommended
+- **CI currently runs on Node.js 24**
+- **pnpm 10+** recommended for workspace development
 - **Chrome/Chromium** browser for testing
 - **Git** for version control
 - **Rust** (for WASM development, optional)
@@ -28,8 +30,8 @@ We welcome contributions in many forms:
 1. **Fork and clone the repository**
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/chrome-mcp-server.git
-cd chrome-mcp-server
+git clone https://github.com/y-chell/mcp-chrome-community.git
+cd mcp-chrome-community
 ```
 
 2. **Install dependencies**
@@ -41,18 +43,18 @@ pnpm install
 3. **Start the project**
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 4. **Load the extension in Chrome**
    - Open `chrome://extensions/`
    - Enable "Developer mode"
-   - Click "Load unpacked" and select `your/extension/dist`
+   - Click "Load unpacked" and select `app/chrome-extension/.output/chrome-mv3`
 
 ## 🏗️ Project Structure
 
 ```
-chrome-mcp-server/
+mcp-chrome-community/
 ├── app/
 │   ├── chrome-extension/     # Chrome extension (WXT + Vue 3)
 │   │   ├── entrypoints/      # Background scripts, popup, content scripts
