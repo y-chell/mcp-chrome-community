@@ -53,8 +53,6 @@ mcp-chrome-bridge doctor
 mcp-chrome-bridge -V
 ```
 
-<img width="612" alt="截屏2025-06-11 15 09 57" src="https://github.com/user-attachments/assets/59458532-e6e1-457c-8c82-3756a5dbb28e" />
-
 1.2 **检查清单文件是否已放在正确目录**
 
 windows路径：C:\Users\xxx\AppData\Roaming\Google\Chrome\NativeMessagingHosts
@@ -82,8 +80,6 @@ mac路径： /Users/xxx/Library/Application\ Support/Google/Chrome/NativeMessagi
 - **macOS**: `~/Library/Logs/mcp-chrome-bridge/`
 - **Windows**: `%LOCALAPPDATA%\mcp-chrome-bridge\logs\`（例如 `C:\Users\xxx\AppData\Local\mcp-chrome-bridge\logs\`）
 - **Linux**: `~/.local/state/mcp-chrome-bridge/logs/`
-
-<img width="804" alt="截屏2025-06-11 15 09 41" src="https://github.com/user-attachments/assets/ce7b7c94-7c84-409a-8210-c9317823aae1" />
 
 3. 一般失败的原因就是两种
 

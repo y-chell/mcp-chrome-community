@@ -31,17 +31,12 @@ mcp-chrome-bridge register
    - 启用"开发者模式"
    - 点击"加载已解压的扩展程序"，选择解压后的扩展目录
    - 点击插件图标打开插件，点击连接即可看到mcp的配置
-     <img width="475" alt="截屏2025-06-09 15 52 06" src="https://github.com/user-attachments/assets/241e57b8-c55f-41a4-9188-0367293dc5bc" />
 
 4. **在 CherryStudio 中使用**
 
 类型选streamableHttp。默认 url 填 `http://127.0.0.1:12306/mcp`；如果你改过 host 或 port，就按实际值填。可用环境变量：`CHROME_MCP_HOST` / `MCP_HTTP_HOST`、`CHROME_MCP_PORT` / `MCP_HTTP_PORT`。
 
-<img width="675" alt="截屏2025-06-11 15 00 29" src="https://github.com/user-attachments/assets/6631e9e4-57f9-477e-b708-6a285cc0d881" />
-
 查看工具列表，如果能列出工具，说明已经可以使用了
-
-<img width="672" alt="截屏2025-06-11 15 14 55" src="https://github.com/user-attachments/assets/d08b7e51-3466-4ab7-87fa-3f1d7be9d112" />
 
 ```json
 {
@@ -78,8 +73,6 @@ mcp-chrome-bridge doctor --fix
 mcp-chrome-bridge -V
 ```
 
-<img width="612" alt="截屏2025-06-11 15 09 57" src="https://github.com/user-attachments/assets/59458532-e6e1-457c-8c82-3756a5dbb28e" />
-
 2. **检查清单文件是否已放在正确目录**
 
 路径：C:\Users\xxx\AppData\Roaming\Google\Chrome\NativeMessagingHosts
@@ -89,8 +82,6 @@ mcp-chrome-bridge -V
 日志现在存储在用户目录：`%LOCALAPPDATA%\mcp-chrome-bridge\logs\`
 
 例如：`C:\Users\xxx\AppData\Local\mcp-chrome-bridge\logs\`
-
-<img width="804" alt="截屏2025-06-11 15 09 41" src="https://github.com/user-attachments/assets/ce7b7c94-7c84-409a-8210-c9317823aae1" />
 
 4. **Node.js 路径问题**
 
