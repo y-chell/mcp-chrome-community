@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Community-maintained fork**: Project maintenance is now continued at `y-chell/mcp-chrome-community`
+- **Release direction**: Upcoming community releases prioritize connection stability, compatibility fixes, and reviewed pull requests before adding new tools
+
+### Notes
+
+- **Recommended next release**: `v1.0.1`
+- **Suggested release title**: `v1.0.1 - community maintenance kickoff`
+
+## [v1.0.1] - 2026-04-25
+
+### Fixed
+
+- **MCP multi-session stability**: HTTP `/mcp` and `/sse` sessions no longer reuse a single MCP `Server` instance, avoiding repeated `connect()` calls and transport conflicts such as `Already connected to a transport`
+- **Quick panel lifecycle cleanup**: Quick panel content cleanup now listens to `pagehide` in addition to `unload`, reducing stale UI state when pages are discarded or navigated away
+- **Element picker lifecycle cleanup**: Element picker cleanup also listens to `pagehide`, making page teardown behavior more reliable on modern browsers
+
+### Changed
+
+- **Configurable MCP host**: Native server now supports `CHROME_MCP_HOST` and `MCP_HTTP_HOST` in addition to existing port overrides
+- **Proxy client URL resolution**: Agent bridge and stdio proxy now follow the resolved host and port instead of assuming `127.0.0.1`
+- **Extension local server URL helpers**: Chrome extension code now uses shared helpers for local MCP URLs instead of repeating hardcoded addresses across multiple files
+- **Community fork metadata**: Repository metadata, package metadata, and setup documents now point to `y-chell/mcp-chrome-community`
+
+### Added
+
+- **Regression test for MCP server creation**: Added coverage to verify a fresh MCP server instance is created for each session
+- **Regression test for host resolution**: Added tests for host and port environment variable handling in native server constants
+
+### Documentation
+
+- **Community maintenance notice**: README and setup docs now clearly state that this is a community-maintained fork
+- **Host and port override docs**: Added setup notes for `CHROME_MCP_HOST` / `MCP_HTTP_HOST` and `CHROME_MCP_PORT` / `MCP_HTTP_PORT`
+
 ## [v0.0.5]
 
 ### Improved
@@ -70,7 +107,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Core Browser Tools**: Complete set of browser automation tools for web interaction
-
   - **Click Tool**: Intelligent element clicking with coordinate and selector support
   - **Fill Tool**: Form filling with text input and selection capabilities
   - **Screenshot Tool**: Full page and element-specific screenshot capture
@@ -78,20 +114,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Keyboard Tool**: Keyboard input simulation and hotkey support
 
 - **Vector Search Engine**: Advanced semantic search capabilities
-
   - **Content Indexing**: Automatic indexing of browser tab content
   - **Semantic Similarity**: AI-powered text similarity matching
   - **Vector Database**: Efficient storage and retrieval of embeddings
   - **Multi-language Support**: Comprehensive multilingual text processing
 
 - **Native Host Integration**: Seamless communication with external applications
-
   - **Chrome Native Messaging**: Bidirectional communication channel
   - **Cross-platform Support**: Windows, macOS, and Linux compatibility
   - **Message Protocol**: Structured messaging system for tool execution
 
 - **AI Model Integration**: State-of-the-art language models for semantic processing
-
   - **Transformer Models**: Support for multiple pre-trained models
   - **ONNX Runtime**: Optimized model inference with WebAssembly
   - **Model Management**: Dynamic model loading and switching
