@@ -12,11 +12,11 @@
 >
 > Original upstream: https://github.com/hangwin/mcp-chrome
 >
-> This fork currently focuses on stability fixes, compatibility fixes, and community-reviewed improvements. It is not guaranteed to follow upstream release cadence one-to-one.
+> This fork exists because upstream appeared inactive and had gone more than four months without updates when the community fork started moving again. Waiting indefinitely would block fixes and overdue improvements, so this repo continues independently and prioritizes practical improvements.
 
 **📖 Documentation**: [English](README.md) | [中文](README_zh.md)
 
-> The project is still in its early stages and is under intensive development. More features, stability improvements, and other enhancements will follow.
+> This community fork is under active maintenance. Current work focuses on stability fixes, browser compatibility updates, and stronger real-world browser automation capabilities.
 
 ---
 
@@ -37,7 +37,7 @@ Chrome MCP Server is a Chrome extension-based **Model Context Protocol (MCP) ser
 - 🏎 **Cross-Tab**: Cross-tab context
 - 🧠 **Semantic Search**: Built-in vector database for intelligent browser tab content discovery
 - 🔍 **Smart Content Analysis**: AI-powered text extraction and similarity matching
-- 🌐 **20+ Tools**: Support for screenshots, network monitoring, interactive operations, bookmark management, browsing history, and 20+ other tools
+- 🌐 **25+ Tools**: Support for screenshots, network monitoring, interactive operations, bookmark management, browsing history, and 25+ other tools
 - 🚀 **SIMD-Accelerated AI**: Custom WebAssembly SIMD optimization for 4-8x faster vector operations
 
 ## 🆚 Comparison with Similar Projects
