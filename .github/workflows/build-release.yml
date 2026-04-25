@@ -128,7 +128,7 @@ jobs:
 
           tag = os.environ["RELEASE_TAG"]
           changelog = Path("docs/CHANGELOG.md").read_text(encoding="utf-8")
-          pattern = rf"^## \[{re.escape(tag)}\](?: - .*)?\n(.*?)(?=^## \[|\Z)"
+          pattern = rf"^## \[{re.escape(tag)}\](?: - [^\n]*)?\n(.*?)(?=^## \[|\Z)"
           match = re.search(pattern, changelog, re.MULTILINE | re.DOTALL)
 
           if not match:
