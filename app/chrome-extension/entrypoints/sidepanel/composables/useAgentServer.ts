@@ -4,6 +4,7 @@
  */
 import { ref, computed, onUnmounted } from 'vue';
 import { NativeMessageType } from 'chrome-mcp-shared';
+import { getLocalServerBaseUrl } from '@/common/constants';
 import { BACKGROUND_MESSAGE_TYPES } from '@/common/message-types';
 import type { AgentEngineInfo, RealtimeEvent } from 'chrome-mcp-shared';
 
@@ -150,7 +151,7 @@ export function useAgentServer(options: UseAgentServerOptions = {}) {
   async function fetchEngines(): Promise<void> {
     if (!serverPort.value) return;
     try {
-      const url = `http://127.0.0.1:${serverPort.value}/agent/engines`;
+      const url = `${getLocalServerBaseUrl(serverPort.value)}/agent/engines`;
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -181,7 +182,7 @@ export function useAgentServer(options: UseAgentServerOptions = {}) {
     closeEventSource();
 
     currentStreamSessionId = targetSessionId;
-    const url = `http://127.0.0.1:${serverPort.value}/agent/chat/${encodeURIComponent(targetSessionId)}/stream`;
+    const url = `${getLocalServerBaseUrl(serverPort.value)}/agent/chat/${encodeURIComponent(targetSessionId)}/stream`;
     const es = new EventSource(url);
 
     es.onopen = () => {

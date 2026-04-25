@@ -13,6 +13,7 @@ import type {
   AgentCliPreference,
   AgentUsageStats,
 } from 'chrome-mcp-shared';
+import { getLocalServerBaseUrl } from '@/common/constants';
 
 /**
  * Request lifecycle state.
@@ -360,7 +361,7 @@ export function useAgentChat(options: UseAgentChatOptions) {
     attachments.value = [];
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/chat/${encodeURIComponent(sessionId)}/act`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/chat/${encodeURIComponent(sessionId)}/act`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -435,7 +436,7 @@ export function useAgentChat(options: UseAgentChatOptions) {
 
     cancelling.value = true;
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/chat/${encodeURIComponent(sessionId)}/cancel/${encodeURIComponent(currentRequestId.value)}`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/chat/${encodeURIComponent(sessionId)}/cancel/${encodeURIComponent(currentRequestId.value)}`;
 
       const response = await fetch(url, { method: 'DELETE' });
       const data = await response.json().catch(() => null);

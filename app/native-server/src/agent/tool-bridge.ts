@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { NATIVE_SERVER_PORT } from '../constant/index.js';
+import { getChromeMcpUrl } from '../constant/index.js';
 
 export interface CliToolInvocation {
   /**
@@ -39,8 +39,7 @@ export class AgentToolBridge {
   private readonly transport: StreamableHTTPClientTransport;
 
   constructor(options: AgentToolBridgeOptions = {}) {
-    const url =
-      options.mcpUrl || `http://127.0.0.1:${process.env.MCP_HTTP_PORT || NATIVE_SERVER_PORT}/mcp`;
+    const url = options.mcpUrl || getChromeMcpUrl();
 
     this.transport = new StreamableHTTPClientTransport(new URL(url));
     this.client = new Client(

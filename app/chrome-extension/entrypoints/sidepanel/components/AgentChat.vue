@@ -211,6 +211,7 @@ import {
   getCodexReasoningEfforts,
   getDefaultModelForCli,
 } from '@/common/agent-models';
+import { getLocalServerBaseUrl } from '@/common/constants';
 import { BACKGROUND_MESSAGE_TYPES } from '@/common/message-types';
 
 // Local UI state
@@ -457,7 +458,7 @@ async function loadSessionHistory(sessionId: string): Promise<void> {
   };
 
   try {
-    const url = `http://127.0.0.1:${serverPort}/agent/sessions/${encodeURIComponent(sessionId)}/history`;
+    const url = `${getLocalServerBaseUrl(serverPort)}/agent/sessions/${encodeURIComponent(sessionId)}/history`;
     const response = await fetch(url);
 
     if (!isStillValid()) return;

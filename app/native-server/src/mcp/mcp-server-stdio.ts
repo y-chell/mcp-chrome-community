@@ -14,6 +14,14 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  CHROME_MCP_HOST_ENV,
+  CHROME_MCP_PORT_ENV,
+  MCP_HTTP_HOST_ENV,
+  MCP_HTTP_PORT_ENV,
+  getChromeMcpHost,
+  getChromeMcpPort,
+} from '../constant';
 
 let stdioMcpServer: Server | null = null;
 let mcpClient: Client | null = null;
@@ -28,6 +36,26 @@ const loadConfig = () => {
     console.error('Failed to load stdio-config.json:', error);
     throw new Error('Configuration file stdio-config.json not found or invalid');
   }
+};
+
+const resolveMcpServerUrl = (): URL => {
+  const config = loadConfig();
+  const url = new URL(config.url);
+  const hasHostOverride =
+    typeof process.env[CHROME_MCP_HOST_ENV] === 'string' ||
+    typeof process.env[MCP_HTTP_HOST_ENV] === 'string';
+  const hasPortOverride =
+    typeof process.env[CHROME_MCP_PORT_ENV] === 'string' ||
+    typeof process.env[MCP_HTTP_PORT_ENV] === 'string';
+
+  if (hasHostOverride) {
+    url.hostname = getChromeMcpHost();
+  }
+  if (hasPortOverride) {
+    url.port = String(getChromeMcpPort());
+  }
+
+  return url;
 };
 
 export const getStdioMcpServer = () => {
@@ -61,9 +89,8 @@ export const ensureMcpClient = async () => {
       }
     }
 
-    const config = loadConfig();
     mcpClient = new Client({ name: 'Mcp Chrome Proxy', version: '1.0.0' }, { capabilities: {} });
-    const transport = new StreamableHTTPClientTransport(new URL(config.url), {});
+    const transport = new StreamableHTTPClientTransport(resolveMcpServerUrl(), {});
     await mcpClient.connect(transport);
     return mcpClient;
   } catch (error) {

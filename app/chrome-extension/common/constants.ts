@@ -9,6 +9,25 @@ export const NATIVE_HOST = {
   DEFAULT_PORT: 12306,
 } as const;
 
+const LOCAL_SERVER_HOST = (() => {
+  const raw = typeof __MCP_HTTP_HOST__ === 'string' ? __MCP_HTTP_HOST__.trim() : '';
+  const sanitized = raw.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  return sanitized || '127.0.0.1';
+})();
+
+export const LOCAL_SERVER = {
+  HOST: LOCAL_SERVER_HOST,
+  PROTOCOL: 'http',
+} as const;
+
+export function getLocalServerBaseUrl(port: number | string): string {
+  return `${LOCAL_SERVER.PROTOCOL}://${LOCAL_SERVER.HOST}:${String(port)}`;
+}
+
+export function getLocalMcpUrl(port: number | string = NATIVE_HOST.DEFAULT_PORT): string {
+  return `${getLocalServerBaseUrl(port)}/mcp`;
+}
+
 // Chrome Extension Icons
 export const ICONS = {
   NOTIFICATION: 'icon/48.png',
@@ -58,7 +77,8 @@ export const SUCCESS_MESSAGES = {
 
 // External Links
 export const LINKS = {
-  TROUBLESHOOTING: 'https://github.com/hangwin/mcp-chrome/blob/master/docs/TROUBLESHOOTING.md',
+  TROUBLESHOOTING:
+    'https://github.com/y-chell/mcp-chrome-community/blob/main/docs/TROUBLESHOOTING.md',
 } as const;
 
 // File Extensions and MIME Types

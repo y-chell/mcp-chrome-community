@@ -137,6 +137,7 @@
 import { computed, inject, onMounted, ref, watch } from 'vue';
 import MarkdownRender from 'markstream-vue';
 import 'markstream-vue/index.css';
+import { getLocalServerBaseUrl } from '@/common/constants';
 import { AGENT_SERVER_PORT_KEY, type TimelineItem } from '../../../composables';
 
 const props = defineProps<{
@@ -153,7 +154,7 @@ const serverPort = inject(AGENT_SERVER_PORT_KEY, ref<number | null>(null));
 const baseUrl = computed(() => {
   const port = serverPort.value;
   if (!Number.isInteger(port) || port === null || port <= 0) return null;
-  return `http://127.0.0.1:${port}`;
+  return getLocalServerBaseUrl(port);
 });
 
 /**

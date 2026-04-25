@@ -4,6 +4,7 @@
  */
 import { ref, computed, watch } from 'vue';
 import type { AgentProject, AgentStoredMessage } from 'chrome-mcp-shared';
+import { getLocalServerBaseUrl } from '@/common/constants';
 
 const STORAGE_KEY_SELECTED_PROJECT = 'agent-selected-project-id';
 
@@ -83,7 +84,7 @@ export function useAgentProjects(options: UseAgentProjectsOptions) {
 
     isLoadingProjects.value = true;
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/projects`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/projects`;
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -122,7 +123,7 @@ export function useAgentProjects(options: UseAgentProjectsOptions) {
     };
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/chat/${encodeURIComponent(projectId)}/messages?limit=100`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/chat/${encodeURIComponent(projectId)}/messages?limit=100`;
       const response = await fetch(url);
 
       if (!isStillValid()) return;
@@ -147,7 +148,7 @@ export function useAgentProjects(options: UseAgentProjectsOptions) {
     if (!serverPort) return null;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/projects/validate-path`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/projects/validate-path`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -208,7 +209,7 @@ export function useAgentProjects(options: UseAgentProjectsOptions) {
       }
 
       // Step 3: Create the project
-      const url = `http://127.0.0.1:${serverPort}/agent/projects`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/projects`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -266,7 +267,7 @@ export function useAgentProjects(options: UseAgentProjectsOptions) {
     if (!serverPort || !projectName.trim()) return null;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/projects/default-root`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/projects/default-root`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -293,7 +294,7 @@ export function useAgentProjects(options: UseAgentProjectsOptions) {
     }
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/projects/pick-directory`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/projects/pick-directory`;
       const response = await fetch(url, { method: 'POST' });
 
       // Handle HTTP errors (e.g., 404 means server version mismatch)
@@ -340,7 +341,7 @@ export function useAgentProjects(options: UseAgentProjectsOptions) {
       }
 
       // Get default workspace directory from server
-      const defaultRootUrl = `http://127.0.0.1:${serverPort}/agent/projects/default-root`;
+      const defaultRootUrl = `${getLocalServerBaseUrl(serverPort)}/agent/projects/default-root`;
       const defaultRootResponse = await fetch(defaultRootUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -355,7 +356,7 @@ export function useAgentProjects(options: UseAgentProjectsOptions) {
       }
 
       // Create default project
-      const createUrl = `http://127.0.0.1:${serverPort}/agent/projects`;
+      const createUrl = `${getLocalServerBaseUrl(serverPort)}/agent/projects`;
       const createResponse = await fetch(createUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -453,7 +454,7 @@ export function useAgentProjects(options: UseAgentProjectsOptions) {
       }
 
       // Create the project
-      const url = `http://127.0.0.1:${serverPort}/agent/projects`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/projects`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -508,7 +509,7 @@ export function useAgentProjects(options: UseAgentProjectsOptions) {
     if (!project || !serverPort) return;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/projects`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/projects`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

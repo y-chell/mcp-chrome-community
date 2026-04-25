@@ -10,6 +10,7 @@ import {
   type WebEditorCancelExecutionPayload,
   type WebEditorCancelExecutionResponse,
 } from '@/common/web-editor-types';
+import { getLocalServerBaseUrl } from '@/common/constants';
 import { openAgentChatSidepanel } from '../utils/sidepanel';
 
 const CONTEXT_MENU_ID = 'web_editor_toggle';
@@ -91,7 +92,7 @@ async function subscribeToSessionStatus(
   // Set initial status
   setExecutionStatus(requestId, 'starting', 'Connecting to Agent...');
 
-  const sseUrl = `http://127.0.0.1:${port}/agent/chat/${encodeURIComponent(sessionId)}/stream`;
+  const sseUrl = `${getLocalServerBaseUrl(port)}/agent/chat/${encodeURIComponent(sessionId)}/stream`;
 
   try {
     const response = await fetch(sseUrl, {
@@ -1032,7 +1033,7 @@ export function initWebEditorListeners(): void {
 
             // Call native-server to open file (server will validate project and path)
             const openResp = await fetch(
-              `http://127.0.0.1:${port}/agent/projects/${encodeURIComponent(projectId)}/open-file`,
+              `${getLocalServerBaseUrl(port)}/agent/projects/${encodeURIComponent(projectId)}/open-file`,
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1297,7 +1298,7 @@ export function initWebEditorListeners(): void {
 
           // Build batch prompt and send to agent
           const instruction = buildAgentPromptBatch(elements, pageUrl);
-          const url = `http://127.0.0.1:${port}/agent/chat/${encodeURIComponent(sessionId)}/act`;
+          const url = `${getLocalServerBaseUrl(port)}/agent/chat/${encodeURIComponent(sessionId)}/act`;
 
           // Extract element labels for compact display
           const elementLabels = elements.slice(0, 5).map((e) => e.label);
@@ -1504,7 +1505,7 @@ export function initWebEditorListeners(): void {
           }
 
           const instruction = buildAgentPrompt(payload);
-          const url = `http://127.0.0.1:${port}/agent/chat/${encodeURIComponent(sessionId)}/act`;
+          const url = `${getLocalServerBaseUrl(port)}/agent/chat/${encodeURIComponent(sessionId)}/act`;
 
           const resp = await fetch(url, {
             method: 'POST',
@@ -1593,7 +1594,7 @@ export function initWebEditorListeners(): void {
 
           try {
             // Call cancel API
-            const cancelUrl = `http://127.0.0.1:${port}/agent/chat/${encodeURIComponent(sessionId)}/cancel/${encodeURIComponent(requestId)}`;
+            const cancelUrl = `${getLocalServerBaseUrl(port)}/agent/chat/${encodeURIComponent(sessionId)}/cancel/${encodeURIComponent(requestId)}`;
             const response = await fetch(cancelUrl, { method: 'DELETE' });
 
             if (!response.ok) {

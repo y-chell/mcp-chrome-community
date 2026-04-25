@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { LINKS, NATIVE_HOST } from '@/common/constants';
+import { LINKS, NATIVE_HOST, getLocalMcpUrl } from '@/common/constants';
 
 import '../sidepanel/styles/agent-chat.css';
 
@@ -8,7 +8,7 @@ const COMMANDS = {
   npmInstall: 'npm install -g mcp-chrome-bridge',
   pnpmInstall: 'pnpm add -g mcp-chrome-bridge',
   yarnInstall: 'yarn global add mcp-chrome-bridge',
-  mcpUrl: 'http://127.0.0.1:' + NATIVE_HOST.DEFAULT_PORT + '/mcp',
+  mcpUrl: getLocalMcpUrl(NATIVE_HOST.DEFAULT_PORT),
   doctor: 'mcp-chrome-bridge doctor',
   fix: 'mcp-chrome-bridge doctor --fix',
   report: 'mcp-chrome-bridge report --copy',

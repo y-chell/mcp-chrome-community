@@ -148,6 +148,7 @@
 <script lang="ts" setup>
 import { computed, inject, onMounted, ref, watch } from 'vue';
 import type { AttachmentMetadata } from 'chrome-mcp-shared';
+import { getLocalServerBaseUrl } from '@/common/constants';
 import type { AgentThread } from '../../composables/useAgentThreads';
 import { AGENT_SERVER_PORT_KEY } from '../../composables';
 import AgentTimeline from './AgentTimeline.vue';
@@ -164,7 +165,7 @@ const serverPort = inject(AGENT_SERVER_PORT_KEY, ref<number | null>(null));
 const baseUrl = computed(() => {
   const port = serverPort.value;
   if (!Number.isInteger(port) || port === null || port <= 0) return null;
-  return `http://127.0.0.1:${port}`;
+  return getLocalServerBaseUrl(port);
 });
 
 /**

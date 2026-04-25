@@ -368,6 +368,7 @@ import type {
   AttachmentProjectStats,
   AttachmentStatsResponse,
 } from 'chrome-mcp-shared';
+import { getLocalServerBaseUrl } from '@/common/constants';
 import { AGENT_SERVER_PORT_KEY } from '../../composables';
 
 const props = defineProps<{
@@ -386,7 +387,7 @@ const baseUrl = computed(() => {
   const port = serverPort.value;
   if (port === null) return null;
   if (!Number.isInteger(port) || port <= 0) return null;
-  return `http://127.0.0.1:${port}`;
+  return getLocalServerBaseUrl(port);
 });
 
 const serverReady = computed(() => baseUrl.value !== null);

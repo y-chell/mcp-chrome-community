@@ -62,6 +62,18 @@ export const ERROR_MESSAGES = {
  */
 export const CHROME_MCP_PORT_ENV = 'CHROME_MCP_PORT';
 export const MCP_HTTP_PORT_ENV = 'MCP_HTTP_PORT';
+export const CHROME_MCP_HOST_ENV = 'CHROME_MCP_HOST';
+export const MCP_HTTP_HOST_ENV = 'MCP_HTTP_HOST';
+
+/**
+ * Get the host clients should use when connecting to the local Chrome MCP HTTP endpoint.
+ * Priority: CHROME_MCP_HOST env > MCP_HTTP_HOST env > SERVER_CONFIG.HOST default
+ */
+export function getChromeMcpHost(): string {
+  const raw = process.env[CHROME_MCP_HOST_ENV] || process.env[MCP_HTTP_HOST_ENV];
+  const host = typeof raw === 'string' ? raw.trim() : '';
+  return host || SERVER_CONFIG.HOST;
+}
 
 /**
  * Get the actual port the Chrome MCP server is listening on.
@@ -78,5 +90,5 @@ export function getChromeMcpPort(): number {
  * This URL is used by Claude/Codex agents to connect to the MCP server.
  */
 export function getChromeMcpUrl(): string {
-  return `http://${SERVER_CONFIG.HOST}:${getChromeMcpPort()}/mcp`;
+  return `http://${getChromeMcpHost()}:${getChromeMcpPort()}/mcp`;
 }

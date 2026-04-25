@@ -342,7 +342,7 @@ import {
   cleanupModelCache,
 } from '@/utils/semantic-similarity-engine';
 import { BACKGROUND_MESSAGE_TYPES } from '@/common/message-types';
-import { LINKS } from '@/common/constants';
+import { LINKS, getLocalMcpUrl } from '@/common/constants';
 import { getMessage } from '@/utils/i18n';
 import { useAgentTheme, type AgentThemeId } from '../sidepanel/composables/useAgentTheme';
 
@@ -537,7 +537,7 @@ const mcpConfigJson = computed(() => {
     mcpServers: {
       'streamable-mcp-server': {
         type: 'streamable-http',
-        url: `http://127.0.0.1:${port}/mcp`,
+        url: getLocalMcpUrl(port),
       },
     },
   };

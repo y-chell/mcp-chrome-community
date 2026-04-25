@@ -103,13 +103,15 @@ export default defineContentScript({
     // Register message listener
     chrome.runtime.onMessage.addListener(handleMessage);
 
-    // Cleanup on page unload
-    window.addEventListener('unload', () => {
+    const cleanup = () => {
       chrome.runtime.onMessage.removeListener(handleMessage);
       if (controller) {
         controller.dispose();
         controller = null;
       }
-    });
+    };
+
+    window.addEventListener('pagehide', cleanup, { once: true });
+    window.addEventListener('unload', cleanup, { once: true });
   },
 });

@@ -16,7 +16,7 @@
 import type { AgentActRequest, RealtimeEvent } from 'chrome-mcp-shared';
 import { NativeMessageType } from 'chrome-mcp-shared';
 
-import { NATIVE_HOST, STORAGE_KEYS } from '@/common/constants';
+import { NATIVE_HOST, STORAGE_KEYS, getLocalServerBaseUrl } from '@/common/constants';
 import {
   BACKGROUND_MESSAGE_TYPES,
   TOOL_MESSAGE_TYPES,
@@ -239,7 +239,7 @@ function cleanupRequest(requestId: string, reason: string): void {
  * Returns false if the session is invalid or server is unreachable.
  */
 async function validateSession(port: number, sessionId: string): Promise<boolean> {
-  const url = `http://127.0.0.1:${port}/agent/sessions/${encodeURIComponent(sessionId)}`;
+  const url = `${getLocalServerBaseUrl(port)}/agent/sessions/${encodeURIComponent(sessionId)}`;
   try {
     const response = await fetch(url);
     return response.ok;
@@ -321,7 +321,7 @@ function createSseSubscription(request: ActiveRequest): SseSubscription {
   };
 
   const done = (async () => {
-    const sseUrl = `http://127.0.0.1:${request.port}/agent/chat/${encodeURIComponent(request.sessionId)}/stream`;
+    const sseUrl = `${getLocalServerBaseUrl(request.port)}/agent/chat/${encodeURIComponent(request.sessionId)}/stream`;
 
     try {
       const response = await fetch(sseUrl, {
@@ -420,7 +420,7 @@ async function postActRequest(request: ActiveRequest): Promise<void> {
     throw new Error('Request was cancelled');
   }
 
-  const url = `http://127.0.0.1:${request.port}/agent/chat/${encodeURIComponent(request.sessionId)}/act`;
+  const url = `${getLocalServerBaseUrl(request.port)}/agent/chat/${encodeURIComponent(request.sessionId)}/act`;
 
   const payload: AgentActRequest = {
     instruction: request.instruction,
@@ -451,7 +451,7 @@ async function cancelRequestOnServer(
   sessionId: string,
   requestId: string,
 ): Promise<void> {
-  const url = `http://127.0.0.1:${port}/agent/chat/${encodeURIComponent(sessionId)}/cancel/${encodeURIComponent(requestId)}`;
+  const url = `${getLocalServerBaseUrl(port)}/agent/chat/${encodeURIComponent(sessionId)}/cancel/${encodeURIComponent(requestId)}`;
   try {
     await fetch(url, { method: 'DELETE' });
   } catch {

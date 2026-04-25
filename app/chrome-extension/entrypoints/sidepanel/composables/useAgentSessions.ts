@@ -12,6 +12,7 @@ import type {
   AgentStoredMessage,
   AgentManagementInfo,
 } from 'chrome-mcp-shared';
+import { getLocalServerBaseUrl } from '@/common/constants';
 
 const STORAGE_KEY_SELECTED_SESSION = 'agent-selected-session-id';
 
@@ -84,7 +85,7 @@ export function useAgentSessions(options: UseAgentSessionsOptions) {
     sessionError.value = null;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/projects/${encodeURIComponent(projectId)}/sessions`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/projects/${encodeURIComponent(projectId)}/sessions`;
       const response = await fetch(url);
 
       if (!isStillValid()) return;
@@ -134,7 +135,7 @@ export function useAgentSessions(options: UseAgentSessionsOptions) {
     sessionError.value = null;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/sessions`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/sessions`;
       const response = await fetch(url);
 
       if (!isStillValid()) return;
@@ -183,7 +184,7 @@ export function useAgentSessions(options: UseAgentSessionsOptions) {
     sessionError.value = null;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/projects/${encodeURIComponent(projectId)}/sessions`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/projects/${encodeURIComponent(projectId)}/sessions`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -242,7 +243,7 @@ export function useAgentSessions(options: UseAgentSessionsOptions) {
     if (!serverPort || !sessionId) return null;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/sessions/${encodeURIComponent(sessionId)}`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/sessions/${encodeURIComponent(sessionId)}`;
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -264,7 +265,7 @@ export function useAgentSessions(options: UseAgentSessionsOptions) {
     if (!serverPort || !sessionId) return null;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/sessions/${encodeURIComponent(sessionId)}`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/sessions/${encodeURIComponent(sessionId)}`;
       const response = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -307,7 +308,7 @@ export function useAgentSessions(options: UseAgentSessionsOptions) {
     if (!serverPort || !sessionId) return false;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/sessions/${encodeURIComponent(sessionId)}`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/sessions/${encodeURIComponent(sessionId)}`;
       const response = await fetch(url, { method: 'DELETE' });
 
       if (response.ok || response.status === 204) {
@@ -390,7 +391,7 @@ export function useAgentSessions(options: UseAgentSessionsOptions) {
     sessionError.value = null;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/sessions/${encodeURIComponent(sessionId)}/reset`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/sessions/${encodeURIComponent(sessionId)}/reset`;
       const response = await fetch(url, { method: 'POST' });
 
       if (!response.ok) {
@@ -431,7 +432,7 @@ export function useAgentSessions(options: UseAgentSessionsOptions) {
     if (!serverPort || !sessionId) return null;
 
     try {
-      const url = `http://127.0.0.1:${serverPort}/agent/sessions/${encodeURIComponent(sessionId)}/claude-info`;
+      const url = `${getLocalServerBaseUrl(serverPort)}/agent/sessions/${encodeURIComponent(sessionId)}/claude-info`;
       const response = await fetch(url);
 
       if (!response.ok) {

@@ -11,6 +11,10 @@ config({ path: resolve(process.cwd(), '.env') });
 config({ path: resolve(process.cwd(), '.env.local') });
 
 const CHROME_EXTENSION_KEY = process.env.CHROME_EXTENSION_KEY;
+const MCP_HTTP_HOST = (process.env.CHROME_MCP_HOST || process.env.MCP_HTTP_HOST || '127.0.0.1')
+  .trim()
+  .replace(/^https?:\/\//, '')
+  .replace(/\/+$/, '');
 // Detect dev mode early for manifest-level switches
 const IS_DEV = process.env.NODE_ENV !== 'production' && process.env.MODE !== 'production';
 
@@ -122,6 +126,9 @@ export default defineConfig({
         }),
   },
   vite: (env) => ({
+    define: {
+      __MCP_HTTP_HOST__: JSON.stringify(MCP_HTTP_HOST || '127.0.0.1'),
+    },
     plugins: [
       // TailwindCSS v4 Vite plugin – no PostCSS config required
       tailwindcss(),

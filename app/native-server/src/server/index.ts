@@ -22,7 +22,7 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { randomUUID } from 'node:crypto';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
-import { getMcpServer } from '../mcp/mcp-server';
+import { createMcpServer } from '../mcp/mcp-server';
 import { AgentStreamManager } from '../agent/stream-manager';
 import { AgentChatService } from '../agent/chat-service';
 import { CodexEngine } from '../agent/engines/codex';
@@ -181,7 +181,7 @@ export class Server {
           this.transportsMap.delete(transport.sessionId);
         });
 
-        const server = getMcpServer();
+        const server = createMcpServer();
         await server.connect(transport);
 
         reply.raw.write(':\n\n');
@@ -235,7 +235,7 @@ export class Server {
             this.transportsMap.delete(transport.sessionId);
           }
         };
-        await getMcpServer().connect(transport);
+        await createMcpServer().connect(transport);
       } else {
         reply.code(HTTP_STATUS.BAD_REQUEST).send({ error: ERROR_MESSAGES.INVALID_MCP_REQUEST });
         return;
@@ -347,6 +347,15 @@ export class Server {
     }
 
     try {
+      const activeTransports = Array.from(new Set(this.transportsMap.values()));
+      this.transportsMap.clear();
+
+      await Promise.allSettled(
+        activeTransports.map(async (transport) => {
+          await transport.close();
+        }),
+      );
+
       await this.fastify.close();
       closeDb();
       this.isRunning = false;

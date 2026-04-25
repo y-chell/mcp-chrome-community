@@ -4,6 +4,7 @@
  */
 import { ref, type Ref } from 'vue';
 import type { OpenProjectTarget, OpenProjectResponse } from 'chrome-mcp-shared';
+import { getLocalServerBaseUrl } from '@/common/constants';
 
 // Storage key for default open target
 const STORAGE_KEY = 'agent-open-project-default';
@@ -78,7 +79,7 @@ export function useOpenProjectPreference(
 
     loading.value = true;
     try {
-      const url = `http://127.0.0.1:${port}/agent/sessions/${encodeURIComponent(sessionId)}/open`;
+      const url = `${getLocalServerBaseUrl(port)}/agent/sessions/${encodeURIComponent(sessionId)}/open`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,7 +110,7 @@ export function useOpenProjectPreference(
 
     loading.value = true;
     try {
-      const url = `http://127.0.0.1:${port}/agent/projects/${encodeURIComponent(projectId)}/open`;
+      const url = `${getLocalServerBaseUrl(port)}/agent/projects/${encodeURIComponent(projectId)}/open`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
