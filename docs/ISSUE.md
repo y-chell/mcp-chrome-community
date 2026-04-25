@@ -1188,3 +1188,53 @@
 
 **最后更新**: 2025-10-11  
 **统计数据来源**: GitHub Issues API
+
+---
+
+## 2026-04-25 接手维护优先级
+
+- GitHub 当前显示：`176 Issues`、`14 Pull requests`
+- 最新正式 release：`v1.0.0`，发布时间 `2025-12-29`
+- 现在最该先修的是“能不能稳定连上”，其次才是加新工具
+
+### 今天已处理
+
+- 修了 HTTP MCP 多会话复用同一个 `Server` 实例的问题
+  旧逻辑会在 `/mcp` 或 `/sse` 新会话里重复 `connect()`，容易撞上 `Already connected to a transport`
+- quick panel / element picker 的清理逻辑从只监听 `unload` 改成同时监听 `pagehide`
+- 补了一个 native-server 回归测试：确认每次连接都会创建新的 MCP server 实例
+- native-server 现在支持 `CHROME_MCP_HOST` / `MCP_HTTP_HOST`，agent bridge 和 stdio proxy 会跟着走
+
+### 下一批建议先做
+
+1. 把 `CHROME_MCP_HOST` / `MCP_HTTP_HOST` 做完整，别再到处写死 `127.0.0.1`
+2. 按风险和收益筛 PR，优先看：
+   - `fix: use pagehide instead of deprecated unload event`
+   - `Support CHROME_MCP_HOST environment variable`
+   - `feat: add annotations to tool definitions`
+   - `chore: add cleanup of active sessions on stdio EOF / parent process exit`
+3. 补最小 CI：
+   - native-server 单测
+   - native-server `tsc --noEmit`
+   - extension 只校验改动范围，别一上来跑全量失败项
+4. 出一个新的 patch release，把“连接稳定性修复”先发出去
+
+### 本地验证备注
+
+- `native-server` 新增回归测试已通过
+- `native-server` 的 `tsc --noEmit` 已通过
+- extension 这次改动对应文件的 `eslint` 已通过
+- extension 全量 `vue-tsc` 目前本来就有很多旧错误，不是这次引入的
+
+## 2026-04-25 仓库接管补充
+
+- 本地仓库 remote 已改成：
+  - `origin = https://github.com/y-chell/mcp-chrome-community.git`
+  - `upstream = https://github.com/hangwin/mcp-chrome.git`
+  - 默认 `git push` 会推到 `origin`
+- `README.md`、`README_zh.md`、`docs/WINDOWS_INSTALL_zh.md`、`docs/mcp-cli-config.md` 已补社区维护说明
+- 连接文档里补了 host / port 覆盖说明：
+  - `CHROME_MCP_HOST` / `MCP_HTTP_HOST`
+  - `CHROME_MCP_PORT` / `MCP_HTTP_PORT`
+- extension 定向 `eslint` 重新跑过一遍，没有新增 error
+- 现在剩下的只有 `app/chrome-extension/entrypoints/popup/App.vue` 里一批旧的 `Unused eslint-disable directive` warning

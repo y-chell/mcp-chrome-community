@@ -6,7 +6,7 @@ Chrome MCP Server 在windows电脑的详细安装和配置步骤
 
 1. **从github上下载最新的chrome扩展**
 
-下载地址：https://github.com/hangwin/mcp-chrome/releases
+下载地址：https://github.com/y-chell/mcp-chrome-community/releases
 
 2. **全局安装mcp-chrome-bridge**
 
@@ -25,7 +25,7 @@ npm install -g mcp-chrome-bridge
 
 4. **在 CherryStudio 中使用**
 
-类型选streamableHttp，url填http://127.0.0.1:12306/mcp
+类型选streamableHttp。默认 url 填 `http://127.0.0.1:12306/mcp`；如果你改过 host 或 port，就按实际值填。可用环境变量：`CHROME_MCP_HOST` / `MCP_HTTP_HOST`、`CHROME_MCP_PORT` / `MCP_HTTP_PORT`。
 
 <img width="675" alt="截屏2025-06-11 15 00 29" src="https://github.com/user-attachments/assets/6631e9e4-57f9-477e-b708-6a285cc0d881" />
 

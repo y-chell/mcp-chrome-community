@@ -1,10 +1,19 @@
 {
   "name": "chrome-mcp-server",
   "description": "a chrome extension to use your own chrome as a mcp server",
-  "author": "hangye",
+  "author": "mcp-chrome-community",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/y-chell/mcp-chrome-community.git",
+    "directory": "app/chrome-extension"
+  },
+  "homepage": "https://github.com/y-chell/mcp-chrome-community",
+  "bugs": {
+    "url": "https://github.com/y-chell/mcp-chrome-community/issues"
+  },
   "scripts": {
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",

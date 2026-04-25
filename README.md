@@ -1,12 +1,18 @@
 # Chrome MCP Server 🚀
 
-[![Stars](https://img.shields.io/github/stars/hangwin/mcp-chrome)](https://img.shields.io/github/stars/hangwin/mcp-chrome)
+[![Stars](https://img.shields.io/github/stars/y-chell/mcp-chrome-community)](https://github.com/y-chell/mcp-chrome-community)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue.svg)](https://www.typescriptlang.org/)
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-green.svg)](https://developer.chrome.com/docs/extensions/)
-[![Release](https://img.shields.io/github/v/release/hangwin/mcp-chrome.svg)](https://img.shields.io/github/v/release/hangwin/mcp-chrome.svg)
+[![Release](https://img.shields.io/github/v/release/y-chell/mcp-chrome-community.svg)](https://github.com/y-chell/mcp-chrome-community/releases)
 
 > 🌟 **Turn your Chrome browser into your intelligent assistant** - Let AI take control of your browser, transforming it into a powerful AI-controlled automation tool.
+
+> Community-maintained fork: https://github.com/y-chell/mcp-chrome-community
+>
+> Original upstream: https://github.com/hangwin/mcp-chrome
+>
+> This fork currently focuses on stability fixes, compatibility fixes, and community-reviewed improvements. It is not guaranteed to follow upstream release cadence one-to-one.
 
 **📖 Documentation**: [English](README.md) | [中文](README_zh.md)
 
@@ -56,7 +62,7 @@ Chrome MCP Server is a Chrome extension-based **Model Context Protocol (MCP) ser
 
 1. **Download the latest Chrome extension from GitHub**
 
-Download link: https://github.com/hangwin/mcp-chrome/releases
+Download link: https://github.com/y-chell/mcp-chrome-community/releases
 
 2. **Install mcp-chrome-bridge globally**
 
@@ -105,6 +111,8 @@ Add the following configuration to your MCP client configuration (using CherrySt
   }
 }
 ```
+
+Default URL is `http://127.0.0.1:12306/mcp`. If you override host or port with `CHROME_MCP_HOST` / `MCP_HTTP_HOST` or `CHROME_MCP_PORT` / `MCP_HTTP_PORT`, update the client URL to match your actual address.
 
 #### Using STDIO Connection (Alternative)
 

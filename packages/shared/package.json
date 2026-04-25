@@ -1,10 +1,19 @@
 {
   "name": "chrome-mcp-shared",
   "version": "1.0.1",
-  "author": "hangye",
+  "author": "mcp-chrome-community",
   "main": "dist/index.js",
   "module": "./dist/index.mjs",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/y-chell/mcp-chrome-community.git",
+    "directory": "packages/shared"
+  },
+  "homepage": "https://github.com/y-chell/mcp-chrome-community",
+  "bugs": {
+    "url": "https://github.com/y-chell/mcp-chrome-community/issues"
+  },
   "exports": {
     ".": {
       "import": {

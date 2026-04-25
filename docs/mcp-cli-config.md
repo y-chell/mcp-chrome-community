@@ -4,7 +4,8 @@ This guide explains how to configure Codex CLI and Claude Code to connect to the
 
 ## Overview
 
-The Chrome MCP Server exposes its MCP interface at `http://127.0.0.1:12306/mcp` (default port).
+The Chrome MCP Server exposes its MCP interface at `http://127.0.0.1:12306/mcp` by default.
+If you override host or port, use the actual address in your client config.
 Both Codex CLI and Claude Code can connect to this endpoint to use Chrome browser control tools.
 
 ## Codex CLI Configuration
@@ -25,9 +26,10 @@ Add the following to your `~/.codex/config.json`:
 
 ### Option 2: Via Environment Variable
 
-Set the MCP URL via environment variable before running codex:
+Set the MCP host or port before running codex:
 
 ```bash
+export CHROME_MCP_HOST=127.0.0.1
 export MCP_HTTP_PORT=12306
 ```
 
@@ -101,8 +103,11 @@ If port 12306 is already in use:
 
 ## Environment Variables
 
-| Variable                     | Description                            | Default |
-| ---------------------------- | -------------------------------------- | ------- |
-| `MCP_HTTP_PORT`              | HTTP port for MCP server               | 12306   |
-| `MCP_ALLOWED_WORKSPACE_BASE` | Additional allowed workspace directory | (none)  |
-| `CHROME_MCP_NODE_PATH`       | Override Node.js executable path       | (auto)  |
+| Variable                     | Description                                 | Default     |
+| ---------------------------- | ------------------------------------------- | ----------- |
+| `CHROME_MCP_HOST`            | Preferred host override for MCP HTTP server | `127.0.0.1` |
+| `MCP_HTTP_HOST`              | Backward-compatible host override           | `127.0.0.1` |
+| `CHROME_MCP_PORT`            | Preferred port override for MCP HTTP server | `12306`     |
+| `MCP_HTTP_PORT`              | Backward-compatible port override           | `12306`     |
+| `MCP_ALLOWED_WORKSPACE_BASE` | Additional allowed workspace directory      | (none)      |
+| `CHROME_MCP_NODE_PATH`       | Override Node.js executable path            | (auto)      |
