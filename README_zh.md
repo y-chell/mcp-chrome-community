@@ -156,7 +156,9 @@ mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js
 }
 ```
 
-比如：在 augment 里也是直接用上面的 JSON 结构。
+比如：在augment中的配置如下：
+
+<img width="494" alt="截屏2025-06-22 22 11 25" src="https://github.com/user-attachments/assets/07c0b090-622b-433d-be70-44e8cb8980a5" />
 
 ## 🛠️ 可用工具
 
@@ -222,11 +224,15 @@ prompt: [excalidraw-prompt](prompt/excalidraw-prompt.md)
 指令：帮我总结当前页面内容，然后画个图帮我理解
 https://www.youtube.com/watch?v=3fBPdUBWVz0
 
+https://github.com/user-attachments/assets/f14f79a6-9390-4821-8296-06d020bcfc07
+
 ### ai先分析图片的内容元素，然后再自动控制excalidraw把图片模仿出来
 
 prompt: [excalidraw-prompt](prompt/excalidraw-prompt.md)|[content-analize](prompt/content-analize.md)
 指令：先看下图片是否能用excalidraw画出来，如果则列出所需的步骤和元素，然后画出来
 https://www.youtube.com/watch?v=tEPdHZBzbZk
+
+https://github.com/user-attachments/assets/4f0600c1-bb1e-4b57-85ab-36c8bdf71c68
 
 ### ai自动帮你注入脚本并修改网页的样式
 
@@ -234,40 +240,56 @@ prompt: [modify-web-prompt](prompt/modify-web.md)
 指令：帮我修改当前页面的样式，去掉广告
 https://youtu.be/twI6apRKHsk
 
+https://github.com/user-attachments/assets/aedbe98d-e90c-4a58-a4a5-d888f7293d8e
+
 ### ai自动帮你捕获网络请求
 
 指令：我想知道小红书的搜索接口是哪个，响应体结构是什么样的
 https://youtu.be/1hHKr7XKqnQ
+
+https://github.com/user-attachments/assets/dc7e5cab-b9af-4b9a-97ce-18e4837318d9
 
 ### ai帮你分析你的浏览记录
 
 指令：分析一下我近一个月的浏览记录
 https://youtu.be/jf2UZfrR2Vk
 
+https://github.com/user-attachments/assets/31b2e064-88c6-4adb-96d7-50748b826eae
+
 ### 网页对话
 
 指令：翻译并总结当前网页
 https://youtu.be/FlJKS9UQyC8
+
+https://github.com/user-attachments/assets/aa8ef2a1-2310-47e6-897a-769d85489396
 
 ### ai帮你自动截图（网页截图）
 
 指令：把huggingface的首页截个图
 https://youtu.be/7ycK6iksWi4
 
+https://github.com/user-attachments/assets/65c6eee2-6366-493d-a3bd-2b27529ff5b3
+
 ### ai帮你自动截图（元素截图）
 
 指令：把huggingface首页的图标截取下来
 https://youtu.be/ev8VivANIrk
+
+https://github.com/user-attachments/assets/d0cf9785-c2fe-4729-a3c5-7f2b8b96fe0c
 
 ### ai帮你管理书签
 
 指令：将当前页面添加到书签中，放到合适的文件夹
 https://youtu.be/R_83arKmFTo
 
+https://github.com/user-attachments/assets/15a7d04c-0196-4b40-84c2-bafb5c26dfe0
+
 ### 自动关闭网页
 
 指令：关闭所有shadcn相关的网页
 https://youtu.be/2wzUT6eNVg4
+
+https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
 
 ## 🤝 贡献指南
 
@@ -334,4 +356,4 @@ https://youtu.be/2wzUT6eNVg4
 
 拉群的目的是让踩过坑的大佬们互相帮忙解答问题，因本人平时要忙着搬砖，不一定能及时解答
 
-群二维码待重新上传。
+![IMG_6296](https://github.com/user-attachments/assets/ecd2e084-24d2-4038-b75f-3ab020b55594)

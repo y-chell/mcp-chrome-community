@@ -158,7 +158,9 @@ Example final path:
 }
 ```
 
-Example config in Augment uses the same JSON structure shown above.
+Example config in Augment:
+
+<img width="494" alt="截屏2025-06-22 22 11 25" src="https://github.com/user-attachments/assets/48eefc0c-a257-4d3b-8bbe-d7ff716de2bf" />
 
 ## 🛠️ Available Tools
 
@@ -224,11 +226,15 @@ prompt: [excalidraw-prompt](prompt/excalidraw-prompt.md)
 Instruction: Help me summarize the current page content, then draw a diagram to aid my understanding.
 https://www.youtube.com/watch?v=3fBPdUBWVz0
 
+https://github.com/user-attachments/assets/fd17209b-303d-48db-9e5e-3717141df183
+
 ### After analyzing the content of the image, the LLM automatically controls Excalidraw to replicate the image
 
 prompt: [excalidraw-prompt](prompt/excalidraw-prompt.md)|[content-analize](prompt/content-analize.md)
 Instruction: First, analyze the content of the image, and then replicate the image by combining the analysis with the content of the image.
 https://www.youtube.com/watch?v=tEPdHZBzbZk
+
+https://github.com/user-attachments/assets/60d12b1a-9b74-40f4-994c-95e8fa1fc8d3
 
 ### AI automatically injects scripts and modifies webpage styles
 
@@ -236,11 +242,15 @@ prompt: [modify-web-prompt](prompt/modify-web.md)
 Instruction: Help me modify the current page's style and remove advertisements.
 https://youtu.be/twI6apRKHsk
 
+https://github.com/user-attachments/assets/69cb561c-2e1e-4665-9411-4a3185f9643e
+
 ### AI automatically captures network requests for you
 
 query: I want to know what the search API for Xiaohongshu is and what the response structure looks like
 
 https://youtu.be/1hHKr7XKqnQ
+
+https://github.com/user-attachments/assets/dc7e5cab-b9af-4b9a-97ce-18e4837318d9
 
 ### AI helps analyze your browsing history
 
@@ -248,20 +258,28 @@ query: Analyze my browsing history from the past month
 
 https://youtu.be/jf2UZfrR2Vk
 
+https://github.com/user-attachments/assets/31b2e064-88c6-4adb-96d7-50748b826eae
+
 ### Web page conversation
 
 query: Translate and summarize the current web page
 https://youtu.be/FlJKS9UQyC8
+
+https://github.com/user-attachments/assets/aa8ef2a1-2310-47e6-897a-769d85489396
 
 ### AI automatically takes screenshots for you (web page screenshots)
 
 query: Take a screenshot of Hugging Face's homepage
 https://youtu.be/7ycK6iksWi4
 
+https://github.com/user-attachments/assets/65c6eee2-6366-493d-a3bd-2b27529ff5b3
+
 ### AI automatically takes screenshots for you (element screenshots)
 
 query: Capture the icon from Hugging Face's homepage
 https://youtu.be/ev8VivANIrk
+
+https://github.com/user-attachments/assets/d0cf9785-c2fe-4729-a3c5-7f2b8b96fe0c
 
 ### AI helps manage bookmarks
 
@@ -269,11 +287,15 @@ query: Add the current page to bookmarks and put it in an appropriate folder
 
 https://youtu.be/R_83arKmFTo
 
+https://github.com/user-attachments/assets/15a7d04c-0196-4b40-84c2-bafb5c26dfe0
+
 ### Automatically close web pages
 
 query: Close all shadcn-related web pages
 
 https://youtu.be/2wzUT6eNVg4
+
+https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
 
 ## 🤝 Contributing
 
