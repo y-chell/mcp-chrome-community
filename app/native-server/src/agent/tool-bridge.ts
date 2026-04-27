@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { getChromeMcpUrl } from '../constant/index.js';
+import { getChromeMcpUrl } from '../constant';
 
 export interface CliToolInvocation {
   /**

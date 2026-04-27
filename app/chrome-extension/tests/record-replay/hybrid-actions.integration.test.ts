@@ -32,11 +32,21 @@ const mocks = vi.hoisted(() => ({
   tabsSendMessage: vi.fn(),
   tabsGet: vi.fn(),
   scriptingExecuteScript: vi.fn(),
+  waitForDownload: vi.fn(),
+  waitForCapturedRequest: vi.fn(),
 }));
 
 // Mock tool bridge - all action handlers communicate with content scripts via this
 vi.mock('@/entrypoints/background/tools', () => ({
   handleCallTool: mocks.handleCallTool,
+}));
+
+vi.mock('@/entrypoints/background/tools/browser/download', () => ({
+  waitForDownload: mocks.waitForDownload,
+}));
+
+vi.mock('@/entrypoints/background/tools/browser/network-capture', () => ({
+  waitForCapturedRequest: mocks.waitForCapturedRequest,
 }));
 
 // Mock selector locator - prevents real DOM queries
@@ -119,6 +129,18 @@ function setupDefaultToolMock(): void {
       };
     }
     return {};
+  });
+
+  mocks.waitForDownload.mockResolvedValue({
+    id: 1,
+    filename: 'download.txt',
+    state: 'complete',
+  });
+
+  mocks.waitForCapturedRequest.mockResolvedValue({
+    backend: 'webRequest',
+    request: { url: 'https://example.com/api', method: 'GET', status: 200 },
+    tookMs: 12,
   });
 }
 
@@ -413,6 +435,93 @@ describe('hybrid mode actions integration (M3-full batch 1)', () => {
         TAB_ID,
         expect.objectContaining({ action: 'waitForText', text: 'Loading complete' }),
         expect.anything(),
+      );
+    });
+
+    it('supports clickable wait with xpath selector', async () => {
+      const executor = createExecutor();
+      const ctx = createMockExecCtx({ frameId: FRAME_ID });
+
+      const step: TestStep = {
+        id: 'wait_clickable_test',
+        type: 'wait',
+        condition: {
+          kind: 'clickable',
+          selector: "//*[@id='save']",
+          selectorType: 'xpath',
+        },
+      };
+
+      const result = await executor.execute(ctx, step as never, { tabId: TAB_ID });
+
+      expect(result.executor).toBe('actions');
+      expect(mocks.tabsSendMessage).toHaveBeenCalledWith(
+        TAB_ID,
+        expect.objectContaining({
+          action: 'waitForClickable',
+          selector: "//*[@id='save']",
+          isXPath: true,
+        }),
+        expect.objectContaining({ frameId: FRAME_ID }),
+      );
+    });
+
+    it('supports download wait condition', async () => {
+      const executor = createExecutor();
+      const ctx = createMockExecCtx({ frameId: FRAME_ID });
+
+      const step: TestStep = {
+        id: 'wait_download_test',
+        type: 'wait',
+        condition: {
+          kind: 'download',
+          filenameContains: 'report',
+          waitForComplete: true,
+        },
+      };
+
+      const result = await executor.execute(ctx, step as never, { tabId: TAB_ID });
+
+      expect(result.executor).toBe('actions');
+      expect(mocks.waitForDownload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filenameContains: 'report',
+          waitForComplete: true,
+          timeoutMs: 10000,
+          startedAfter: expect.any(Number),
+        }),
+      );
+    });
+
+    it('supports network wait condition', async () => {
+      const executor = createExecutor();
+      const ctx = createMockExecCtx({ frameId: FRAME_ID });
+
+      const step: TestStep = {
+        id: 'wait_network_test',
+        type: 'wait',
+        condition: {
+          kind: 'network',
+          urlPattern: '/api/save',
+          method: 'POST',
+          status: 201,
+          includeStatic: true,
+        },
+      };
+
+      const result = await executor.execute(ctx, step as never, { tabId: TAB_ID });
+
+      expect(result.executor).toBe('actions');
+      expect(mocks.waitForCapturedRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tabId: TAB_ID,
+          urlPattern: '/api/save',
+          method: 'POST',
+          status: 201,
+          includeStatic: true,
+          timeoutMs: 10000,
+          startedAfter: expect.any(Number),
+        }),
       );
     });
   });

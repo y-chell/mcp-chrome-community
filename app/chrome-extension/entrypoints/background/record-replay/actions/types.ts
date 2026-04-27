@@ -395,7 +395,30 @@ export type WaitCondition =
   | { kind: 'navigation' }
   | { kind: 'networkIdle'; idleMs?: Resolvable<Milliseconds> }
   | { kind: 'text'; text: Resolvable<string>; appear?: boolean }
-  | { kind: 'selector'; selector: Resolvable<string>; visible?: boolean };
+  | {
+      kind: 'selector';
+      selector: Resolvable<string>;
+      visible?: boolean;
+      selectorType?: 'css' | 'xpath';
+    }
+  | {
+      kind: 'clickable';
+      selector?: Resolvable<string>;
+      ref?: Resolvable<string>;
+      selectorType?: 'css' | 'xpath';
+    }
+  | {
+      kind: 'download';
+      filenameContains?: Resolvable<string>;
+      waitForComplete?: boolean;
+    }
+  | {
+      kind: 'network';
+      urlPattern?: Resolvable<string>;
+      method?: Resolvable<string>;
+      status?: Resolvable<number>;
+      includeStatic?: boolean;
+    };
 
 export interface WaitParams {
   condition: WaitCondition;

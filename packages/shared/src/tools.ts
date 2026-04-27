@@ -279,7 +279,8 @@ export const TOOL_SCHEMAS: Tool[] = [
         // For action=fill
         selector: {
           type: 'string',
-          description: 'CSS selector for fill (alternative to ref).',
+          description:
+            'CSS/XPath selector for fill, hover, click, or wait actions (use selectorType to choose).',
         },
         value: {
           oneOf: [{ type: 'string' }, { type: 'boolean' }, { type: 'number' }],
@@ -304,10 +305,54 @@ export const TOOL_SCHEMAS: Tool[] = [
           description:
             'For action=wait with text: whether to wait for the text to appear (true, default) or disappear (false)',
         },
+        visible: {
+          type: 'boolean',
+          description:
+            'For action=wait with selector: whether to wait for the selector to be visible (true, default) or hidden/missing (false).',
+        },
+        clickable: {
+          type: 'boolean',
+          description:
+            'For action=wait with ref/selector: wait until the target is clickable (visible, enabled, pointer-events active).',
+        },
+        download: {
+          type: 'boolean',
+          description: 'For action=wait: wait for a browser download started after this call.',
+        },
+        filenameContains: {
+          type: 'string',
+          description: 'For action=wait with download: match filename or URL substring.',
+        },
+        waitForComplete: {
+          type: 'boolean',
+          description:
+            'For action=wait with download: whether to wait for completion (default true).',
+        },
+        network: {
+          type: 'boolean',
+          description: 'For action=wait: wait for any matching network request to finish.',
+        },
+        urlPattern: {
+          type: 'string',
+          description: 'For action=wait with network: URL substring to match.',
+        },
+        method: {
+          type: 'string',
+          description: 'For action=wait with network: HTTP method to match.',
+        },
+        status: {
+          type: 'number',
+          description: 'For action=wait with network: HTTP status code to match.',
+        },
+        includeStatic: {
+          type: 'boolean',
+          description:
+            'For action=wait with network: whether to include static resources while capturing.',
+        },
         timeout: {
           type: 'number',
           description:
-            'For action=wait with text: timeout in milliseconds (default 10000, max 120000)',
+            'For action=wait with text/selector/ref/download/network: timeout in milliseconds (default 10000, max 120000)',
         },
         duration: {
           type: 'number',

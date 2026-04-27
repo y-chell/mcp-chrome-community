@@ -313,12 +313,12 @@ The next community-fork milestone is not "add as many tools as possible". The pr
 
 ### 2026-04-25 v1.1 Priorities
 
-- [ ] `P0` Stabilize iframe / Shadow DOM / ref-based targeting
+- [x] `P0` Stabilize iframe / Shadow DOM / ref-based targeting
   - Fix the class of failures where the element is visibly on the page but the tool still returns `not found`
   - Related issues: `#172`, `#126`
   - Primary modules: `app/chrome-extension/entrypoints/background/tools/browser/read-page.ts`, `interaction.ts`, `computer.ts`, `inject-scripts/accessibility-tree-helper.js`, `click-helper.js`, `fill-helper.js`
 
-- [ ] `P0` Add robust waiting and assertions for dynamic pages
+- [x] `P0` Add robust waiting and assertions for dynamic pages
   - Cover common agent actions such as "wait until text appears/disappears", "wait until clickable", "wait until request finishes", and "wait until download completes"
   - Related issues: `#93`, `#200`, `#43`
   - Primary modules: `computer.ts`, `common.ts`, `download.ts`, `network-capture.ts`, `app/chrome-extension/entrypoints/background/record-replay/engine/policies/wait.ts`

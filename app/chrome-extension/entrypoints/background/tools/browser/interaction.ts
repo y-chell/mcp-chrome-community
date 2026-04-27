@@ -67,10 +67,18 @@ class ClickTool extends BaseBrowserToolExecutor {
 
       let finalRef = args.ref;
       let finalSelector = selector;
+      let targetFrameId = frameId;
 
       // If selector is XPath, convert to ref first
       if (selector && selectorType === 'xpath') {
-        await this.injectContentScript(tab.id, ['inject-scripts/accessibility-tree-helper.js']);
+        await this.injectContentScript(
+          tab.id,
+          ['inject-scripts/accessibility-tree-helper.js'],
+          false,
+          'ISOLATED',
+          typeof frameId !== 'number',
+          typeof frameId === 'number' ? [frameId] : undefined,
+        );
         try {
           const resolved = await this.sendMessageToTab(
             tab.id,
@@ -84,6 +92,7 @@ class ClickTool extends BaseBrowserToolExecutor {
           if (resolved && resolved.success && resolved.ref) {
             finalRef = resolved.ref;
             finalSelector = undefined; // Use ref instead of selector
+            targetFrameId = this.resolveFrameIdForRef(tab.id, finalRef, frameId);
           } else {
             return createErrorResponse(
               `Failed to resolve XPath selector: ${resolved?.error || 'unknown error'}`,
@@ -96,7 +105,15 @@ class ClickTool extends BaseBrowserToolExecutor {
         }
       }
 
-      await this.injectContentScript(tab.id, ['inject-scripts/click-helper.js']);
+      targetFrameId = this.resolveFrameIdForRef(tab.id, finalRef, targetFrameId);
+      await this.injectContentScript(
+        tab.id,
+        ['inject-scripts/click-helper.js'],
+        false,
+        'ISOLATED',
+        false,
+        typeof targetFrameId === 'number' ? [targetFrameId] : undefined,
+      );
 
       // Send click message to content script
       const result = await this.sendMessageToTab(
@@ -114,7 +131,7 @@ class ClickTool extends BaseBrowserToolExecutor {
           cancelable,
           modifiers,
         },
-        frameId,
+        targetFrameId,
       );
 
       // Determine actual click method used
@@ -197,10 +214,18 @@ class FillTool extends BaseBrowserToolExecutor {
 
       let finalRef = ref;
       let finalSelector = selector;
+      let targetFrameId = frameId;
 
       // If selector is XPath, convert to ref first
       if (selector && selectorType === 'xpath') {
-        await this.injectContentScript(tab.id, ['inject-scripts/accessibility-tree-helper.js']);
+        await this.injectContentScript(
+          tab.id,
+          ['inject-scripts/accessibility-tree-helper.js'],
+          false,
+          'ISOLATED',
+          typeof frameId !== 'number',
+          typeof frameId === 'number' ? [frameId] : undefined,
+        );
         try {
           const resolved = await this.sendMessageToTab(
             tab.id,
@@ -214,6 +239,7 @@ class FillTool extends BaseBrowserToolExecutor {
           if (resolved && resolved.success && resolved.ref) {
             finalRef = resolved.ref;
             finalSelector = undefined; // Use ref instead of selector
+            targetFrameId = this.resolveFrameIdForRef(tab.id, finalRef, frameId);
           } else {
             return createErrorResponse(
               `Failed to resolve XPath selector: ${resolved?.error || 'unknown error'}`,
@@ -226,7 +252,15 @@ class FillTool extends BaseBrowserToolExecutor {
         }
       }
 
-      await this.injectContentScript(tab.id, ['inject-scripts/fill-helper.js']);
+      targetFrameId = this.resolveFrameIdForRef(tab.id, finalRef, targetFrameId);
+      await this.injectContentScript(
+        tab.id,
+        ['inject-scripts/fill-helper.js'],
+        false,
+        'ISOLATED',
+        false,
+        typeof targetFrameId === 'number' ? [targetFrameId] : undefined,
+      );
 
       // Send fill message to content script
       const result = await this.sendMessageToTab(
@@ -237,7 +271,7 @@ class FillTool extends BaseBrowserToolExecutor {
           ref: finalRef,
           value,
         },
-        frameId,
+        targetFrameId,
       );
 
       if (result && result.error) {

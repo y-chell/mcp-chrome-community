@@ -15,6 +15,16 @@ interface NetworkCaptureToolParams {
   includeStatic?: boolean;
 }
 
+export interface WaitForCapturedRequestOptions {
+  tabId: number;
+  urlPattern?: string;
+  method?: string;
+  status?: number;
+  timeoutMs: number;
+  startedAfter?: number;
+  includeStatic?: boolean;
+}
+
 /**
  * Extract text content from ToolResult
  */
@@ -59,6 +69,119 @@ function isDebuggerCaptureActive(): boolean {
  */
 function isWebRequestCaptureActive(): boolean {
   return networkCaptureStartTool.captureData.size > 0;
+}
+
+function getDebuggerCaptureMap(): Map<number, any> {
+  const captureData = (
+    networkDebuggerStartTool as unknown as { captureData?: Map<number, unknown> }
+  ).captureData;
+  return captureData instanceof Map ? captureData : new Map();
+}
+
+function getDebuggerCaptureInfo(tabId: number): any | undefined {
+  return getDebuggerCaptureMap().get(tabId);
+}
+
+function getWebRequestCaptureInfo(tabId: number): any | undefined {
+  return networkCaptureStartTool.captureData.get(tabId);
+}
+
+function listCapturedRequests(captureInfo: any): any[] {
+  if (!captureInfo || typeof captureInfo !== 'object') return [];
+  const requests = captureInfo.requests;
+  if (!requests || typeof requests !== 'object') return [];
+  return Object.values(requests);
+}
+
+function isCompletedRequest(request: any): boolean {
+  if (!request || typeof request !== 'object') return false;
+  if (request.status === 'complete' || request.status === 'error') return true;
+  if (typeof request.status === 'number') return true;
+  if (typeof request.statusCode === 'number') return true;
+  if (typeof request.responseTime === 'number') return true;
+  if (typeof request.errorText === 'string' && request.errorText.trim()) return true;
+  return false;
+}
+
+function matchesCapturedRequest(request: any, opts: WaitForCapturedRequestOptions): boolean {
+  if (!request || typeof request !== 'object') return false;
+  if (typeof opts.startedAfter === 'number' && Number.isFinite(opts.startedAfter)) {
+    const requestTime =
+      typeof request.requestTime === 'number'
+        ? request.requestTime
+        : typeof request.responseTime === 'number'
+          ? request.responseTime
+          : undefined;
+    if (typeof requestTime === 'number' && requestTime < opts.startedAfter) {
+      return false;
+    }
+  }
+  if (opts.urlPattern) {
+    const haystack = String(request.url || '').toLowerCase();
+    if (!haystack.includes(opts.urlPattern.toLowerCase())) return false;
+  }
+  if (opts.method) {
+    if (String(request.method || '').toUpperCase() !== opts.method.toUpperCase()) return false;
+  }
+  if (typeof opts.status === 'number') {
+    const statusValue =
+      typeof request.status === 'number'
+        ? request.status
+        : typeof request.statusCode === 'number'
+          ? request.statusCode
+          : undefined;
+    if (statusValue !== opts.status) return false;
+  }
+  return true;
+}
+
+export async function waitForCapturedRequest(opts: WaitForCapturedRequestOptions) {
+  const startTime = Date.now();
+  const timeoutMs = Math.max(1000, Math.min(Number(opts.timeoutMs || 10000), 120000));
+  const pollIntervalMs = 100;
+  const activeDebugger = getDebuggerCaptureInfo(opts.tabId);
+  const activeWebRequest = getWebRequestCaptureInfo(opts.tabId);
+  const useActiveDebugger = !!activeDebugger;
+  const useActiveWebRequest = !!activeWebRequest;
+  let tempCaptureStarted = false;
+
+  if (!useActiveDebugger && !useActiveWebRequest) {
+    await networkCaptureStartTool.startCaptureForTab(opts.tabId, {
+      maxCaptureTime: timeoutMs + 1000,
+      inactivityTimeout: timeoutMs + 1000,
+      includeStatic: opts.includeStatic === true,
+    });
+    tempCaptureStarted = true;
+  }
+
+  try {
+    while (Date.now() - startTime <= timeoutMs) {
+      const backend = getDebuggerCaptureInfo(opts.tabId) ? 'debugger' : 'webRequest';
+      const captureInfo =
+        backend === 'debugger'
+          ? getDebuggerCaptureInfo(opts.tabId)
+          : getWebRequestCaptureInfo(opts.tabId);
+      const matched = listCapturedRequests(captureInfo)
+        .filter((request) => matchesCapturedRequest(request, opts))
+        .find((request) => isCompletedRequest(request));
+
+      if (matched) {
+        return {
+          backend,
+          request: matched,
+          tookMs: Date.now() - startTime,
+        };
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+
+    throw new Error('Network wait timed out');
+  } finally {
+    if (tempCaptureStarted) {
+      await networkCaptureStartTool.stopCapture(opts.tabId).catch(() => undefined);
+    }
+  }
 }
 
 /**

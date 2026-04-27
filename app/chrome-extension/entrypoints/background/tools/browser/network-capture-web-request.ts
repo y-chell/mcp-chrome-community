@@ -559,7 +559,7 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
    * @param tabId Tab ID
    * @param options Capture options
    */
-  private async startCaptureForTab(
+  public async startCaptureForTab(
     tabId: number,
     options: {
       maxCaptureTime: number;

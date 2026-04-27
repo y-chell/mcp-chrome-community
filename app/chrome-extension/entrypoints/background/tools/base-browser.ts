@@ -1,6 +1,7 @@
 import { ToolExecutor } from '@/common/tool-handler';
 import type { ToolResult } from '@/common/tool-handler';
 import { TIMEOUTS, ERROR_MESSAGES } from '@/common/constants';
+import { getRefTargetFrameId } from '@/utils/ref-target-store';
 
 const PING_TIMEOUT_MS = 300;
 
@@ -88,9 +89,11 @@ export abstract class BaseBrowserToolExecutor implements ToolExecutor {
    */
   protected async sendMessageToTab(tabId: number, message: any, frameId?: number): Promise<any> {
     try {
+      const resolvedFrameId =
+        typeof frameId === 'number' ? frameId : this.resolveFrameIdFromMessage(tabId, message);
       const response =
-        typeof frameId === 'number'
-          ? await chrome.tabs.sendMessage(tabId, message, { frameId })
+        typeof resolvedFrameId === 'number'
+          ? await chrome.tabs.sendMessage(tabId, message, { frameId: resolvedFrameId })
           : await chrome.tabs.sendMessage(tabId, message);
 
       if (response && response.error) {
@@ -109,6 +112,29 @@ export abstract class BaseBrowserToolExecutor implements ToolExecutor {
       }
       throw new Error(errorMessage);
     }
+  }
+
+  protected resolveFrameIdForRef(
+    tabId: number,
+    ref?: string,
+    explicitFrameId?: number,
+  ): number | undefined {
+    if (typeof explicitFrameId === 'number') return explicitFrameId;
+    if (typeof ref !== 'string' || !ref.trim()) return undefined;
+    return getRefTargetFrameId(tabId, ref);
+  }
+
+  private resolveFrameIdFromMessage(tabId: number, message: any): number | undefined {
+    if (!message || typeof message !== 'object') return undefined;
+
+    const candidateRef =
+      typeof message.ref === 'string'
+        ? message.ref
+        : typeof message.refId === 'string'
+          ? message.refId
+          : undefined;
+
+    return this.resolveFrameIdForRef(tabId, candidateRef);
   }
 
   /**

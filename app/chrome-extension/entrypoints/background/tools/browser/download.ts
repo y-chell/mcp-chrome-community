@@ -6,6 +6,9 @@ interface HandleDownloadParams {
   filenameContains?: string;
   timeoutMs?: number; // default 60000
   waitForComplete?: boolean; // default true
+  startedAfter?: number;
+  allowInterrupted?: boolean;
+  state?: 'in_progress' | 'complete' | 'interrupted';
 }
 
 /**
@@ -18,9 +21,25 @@ class HandleDownloadTool extends BaseBrowserToolExecutor {
     const filenameContains = String(args?.filenameContains || '').trim();
     const waitForComplete = args?.waitForComplete !== false;
     const timeoutMs = Math.max(1000, Math.min(Number(args?.timeoutMs ?? 60000), 300000));
+    const startedAfter =
+      typeof args?.startedAfter === 'number' && Number.isFinite(args.startedAfter)
+        ? args.startedAfter
+        : undefined;
+    const allowInterrupted = args?.allowInterrupted === true;
+    const state =
+      args?.state === 'in_progress' || args?.state === 'complete' || args?.state === 'interrupted'
+        ? args.state
+        : undefined;
 
     try {
-      const result = await waitForDownload({ filenameContains, waitForComplete, timeoutMs });
+      const result = await waitForDownload({
+        filenameContains,
+        waitForComplete,
+        timeoutMs,
+        startedAfter,
+        allowInterrupted,
+        state,
+      });
       return {
         content: [{ type: 'text', text: JSON.stringify({ success: true, download: result }) }],
         isError: false,
@@ -31,12 +50,16 @@ class HandleDownloadTool extends BaseBrowserToolExecutor {
   }
 }
 
-async function waitForDownload(opts: {
+export async function waitForDownload(opts: {
   filenameContains?: string;
   waitForComplete: boolean;
   timeoutMs: number;
+  startedAfter?: number;
+  allowInterrupted?: boolean;
+  state?: 'in_progress' | 'complete' | 'interrupted';
 }) {
-  const { filenameContains, waitForComplete, timeoutMs } = opts;
+  const { filenameContains, waitForComplete, timeoutMs, startedAfter, allowInterrupted, state } =
+    opts;
   return new Promise<any>((resolve, reject) => {
     let timer: any = null;
     const onError = (err: any) => {
@@ -55,9 +78,30 @@ async function waitForDownload(opts: {
       } catch {}
     };
     const matches = (item: chrome.downloads.DownloadItem) => {
+      if (!item) return false;
+      if (typeof startedAfter === 'number' && Number.isFinite(startedAfter)) {
+        const startTimeMs = item.startTime ? Date.parse(item.startTime) : NaN;
+        if (!Number.isFinite(startTimeMs) || startTimeMs < startedAfter) {
+          return false;
+        }
+      }
       if (!filenameContains) return true;
       const name = (item.filename || '').split(/[/\\]/).pop() || '';
       return name.includes(filenameContains) || (item.url || '').includes(filenameContains);
+    };
+    const matchesState = (item: chrome.downloads.DownloadItem) => {
+      if (!item?.state) return false;
+      if (state) return item.state === state;
+      if (!waitForComplete) return true;
+      if (item.state === 'complete') return true;
+      return allowInterrupted === true && item.state === 'interrupted';
+    };
+    const matchedBy = (item: chrome.downloads.DownloadItem) => {
+      if (!filenameContains) return 'any';
+      const name = (item.filename || '').split(/[/\\]/).pop() || '';
+      if (name.includes(filenameContains)) return 'filename';
+      if ((item.url || '').includes(filenameContains)) return 'url';
+      return 'unknown';
     };
     const fulfill = async (item: chrome.downloads.DownloadItem) => {
       // try to fill more details via downloads.search
@@ -76,17 +120,24 @@ async function waitForDownload(opts: {
           startTime: out.startTime,
           endTime: (out as any).endTime || undefined,
           exists: (out as any).exists,
+          matchedBy: matchedBy(out),
         });
         return;
       } catch {
         cleanup();
-        resolve({ id: item.id, filename: item.filename, url: item.url, state: item.state });
+        resolve({
+          id: item.id,
+          filename: item.filename,
+          url: item.url,
+          state: item.state,
+          matchedBy: matchedBy(item),
+        });
       }
     };
     const onCreated = (item: chrome.downloads.DownloadItem) => {
       try {
         if (!matches(item)) return;
-        if (!waitForComplete) {
+        if (!waitForComplete || matchesState(item)) {
           fulfill(item);
         }
       } catch {}
@@ -101,7 +152,7 @@ async function waitForDownload(opts: {
             const item = arr && arr[0];
             if (!item) return;
             if (!matches(item)) return;
-            if (waitForComplete && item.state === 'complete') fulfill(item);
+            if (matchesState(item)) fulfill(item);
           })
           .catch(() => {});
       } catch {}
@@ -111,10 +162,16 @@ async function waitForDownload(opts: {
     timer = setTimeout(() => onError(new Error('Download wait timed out')), timeoutMs);
     // Try to find an already-running matching download
     chrome.downloads
-      .search({ state: waitForComplete ? 'in_progress' : undefined })
+      .search({})
       .then((arr) => {
-        const hit = (arr || []).find((d) => matches(d));
-        if (hit && !waitForComplete) fulfill(hit);
+        const matched = (arr || [])
+          .filter((item) => matches(item) && matchesState(item))
+          .sort((a, b) => {
+            const aTime = a.startTime ? Date.parse(a.startTime) : 0;
+            const bTime = b.startTime ? Date.parse(b.startTime) : 0;
+            return bTime - aTime;
+          });
+        if (matched[0]) fulfill(matched[0]);
       })
       .catch(() => {});
   });

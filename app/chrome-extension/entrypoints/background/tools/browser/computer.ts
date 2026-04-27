@@ -6,6 +6,8 @@ import { TOOL_MESSAGE_TYPES } from '@/common/message-types';
 import { clickTool, fillTool } from './interaction';
 import { keyboardTool } from './keyboard';
 import { screenshotTool } from './screenshot';
+import { waitForDownload } from './download';
+import { waitForCapturedRequest } from './network-capture';
 import { screenshotContextManager, scaleCoordinates } from '@/utils/screenshot-context';
 import { cdpSessionManager } from '@/utils/cdp-session-manager';
 import {
@@ -67,10 +69,22 @@ interface ComputerParams {
   modifiers?: Modifiers; // for click actions
   region?: ZoomRegion; // for zoom action
   duration?: number; // seconds for wait
+  appear?: boolean; // wait text appear/disappear
+  visible?: boolean; // wait selector visible/hidden
+  clickable?: boolean; // wait until ref/selector is clickable
+  timeout?: number; // milliseconds for wait helpers
+  download?: boolean; // wait for download
+  network?: boolean; // wait for a network request to complete
+  filenameContains?: string; // download filter
+  waitForComplete?: boolean; // download completion policy
+  urlPattern?: string; // network URL substring filter
+  method?: string; // network method filter
+  status?: number; // network status filter
+  includeStatic?: boolean; // network capture option
   // For fill
   selector?: string;
   selectorType?: 'css' | 'xpath'; // Type of selector (default: 'css')
-  value?: string;
+  value?: string | boolean | number;
   frameId?: number; // Target frame for selector/ref resolution
   tabId?: number; // target existing tab id
   windowId?: number;
@@ -292,6 +306,365 @@ class ComputerTool extends BaseBrowserToolExecutor {
     return mapping[action] || null;
   }
 
+  private createJsonSuccess(payload: Record<string, unknown>): ToolResult {
+    return {
+      content: [{ type: 'text', text: JSON.stringify(payload) }],
+      isError: false,
+    };
+  }
+
+  private async getWaitFrameIds(
+    tabId: number,
+    preferredFrameId?: number,
+    includeAllFrames: boolean = false,
+  ): Promise<number[]> {
+    if (typeof preferredFrameId === 'number') return [preferredFrameId];
+    if (!includeAllFrames) return [0];
+
+    try {
+      const frames = await chrome.webNavigation.getAllFrames({ tabId });
+      const frameIds = Array.from(
+        new Set(
+          (frames || [])
+            .map((frame) => frame?.frameId)
+            .filter((frameId): frameId is number => Number.isInteger(frameId) && frameId >= 0),
+        ),
+      ).sort((a, b) => a - b);
+
+      return frameIds.length > 0 ? frameIds : [0];
+    } catch (error) {
+      console.warn('computer.wait: failed to enumerate frames, falling back to top frame', error);
+      return [0];
+    }
+  }
+
+  private async waitForAnyFrame(
+    tabId: number,
+    frameIds: number[],
+    buildMessage: (frameId: number) => Record<string, unknown>,
+  ): Promise<{
+    success: boolean;
+    frameId?: number;
+    response?: any;
+    reason?: string;
+    error?: string;
+  }> {
+    return await new Promise((resolve) => {
+      let settled = 0;
+      let resolved = false;
+      let sawTimeout = false;
+      let firstError: string | undefined;
+
+      const finish = (result: {
+        success: boolean;
+        frameId?: number;
+        response?: any;
+        reason?: string;
+        error?: string;
+      }) => {
+        if (resolved) return;
+        resolved = true;
+        resolve(result);
+      };
+
+      for (const candidateFrameId of frameIds) {
+        this.sendMessageToTab(tabId, buildMessage(candidateFrameId), candidateFrameId)
+          .then((response) => {
+            if (resolved) return;
+            if (response?.success === true) {
+              finish({ success: true, frameId: candidateFrameId, response });
+              return;
+            }
+
+            settled += 1;
+            if (response?.reason === 'timeout') {
+              sawTimeout = true;
+            } else if (!firstError) {
+              firstError = response?.error || response?.reason || 'unknown error';
+            }
+
+            if (settled === frameIds.length) {
+              finish({
+                success: false,
+                reason: sawTimeout ? 'timeout' : 'error',
+                error: firstError,
+              });
+            }
+          })
+          .catch((error) => {
+            if (resolved) return;
+            settled += 1;
+            if (!firstError) {
+              firstError = error instanceof Error ? error.message : String(error);
+            }
+            if (settled === frameIds.length) {
+              finish({
+                success: false,
+                reason: sawTimeout ? 'timeout' : 'error',
+                error: firstError,
+              });
+            }
+          });
+      }
+    });
+  }
+
+  private async waitForAllFrames(
+    tabId: number,
+    frameIds: number[],
+    buildMessage: (frameId: number) => Record<string, unknown>,
+  ): Promise<{
+    success: boolean;
+    frameId?: number;
+    response?: any;
+    reason?: string;
+    error?: string;
+  }> {
+    const results = await Promise.all(
+      frameIds.map(async (candidateFrameId) => {
+        try {
+          const response = await this.sendMessageToTab(
+            tabId,
+            buildMessage(candidateFrameId),
+            candidateFrameId,
+          );
+          return { frameId: candidateFrameId, response };
+        } catch (error) {
+          return {
+            frameId: candidateFrameId,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }),
+    );
+
+    let sawTimeout = false;
+    let firstError: string | undefined;
+    let lastSuccessFrameId: number | undefined;
+    let lastSuccessResponse: any;
+
+    for (const result of results) {
+      if (result.response?.success === true) {
+        lastSuccessFrameId = result.frameId;
+        lastSuccessResponse = result.response;
+        continue;
+      }
+
+      if (result.response?.reason === 'timeout') {
+        sawTimeout = true;
+        continue;
+      }
+
+      if (!firstError) {
+        firstError =
+          result.error || result.response?.error || result.response?.reason || 'unknown error';
+      }
+    }
+
+    if (firstError) {
+      return { success: false, reason: 'error', error: firstError };
+    }
+    if (sawTimeout) {
+      return { success: false, reason: 'timeout' };
+    }
+
+    return {
+      success: true,
+      frameId: lastSuccessFrameId,
+      response: lastSuccessResponse,
+    };
+  }
+
+  private async handleWait(params: ComputerParams, tab: chrome.tabs.Tab): Promise<ToolResult> {
+    const waitStartedAt = Date.now();
+    const timeoutMs = Math.max(0, Math.min(Number(params.timeout ?? 10000), 120000));
+    const frameId = this.resolveFrameIdForRef(tab.id!, params.ref, params.frameId);
+    const hasTextCondition = typeof params.text === 'string' && params.text.trim().length > 0;
+    const filenameContains =
+      typeof params.filenameContains === 'string' ? params.filenameContains.trim() : '';
+    const hasDownloadCondition = params.download === true || filenameContains.length > 0;
+    const urlPattern = typeof params.urlPattern === 'string' ? params.urlPattern.trim() : '';
+    const method = typeof params.method === 'string' ? params.method.trim() : '';
+    const hasStatusCondition =
+      typeof params.status === 'number' && Number.isFinite(Number(params.status));
+    const hasNetworkCondition =
+      params.network === true || !!urlPattern || !!method || hasStatusCondition;
+
+    if (hasTextCondition) {
+      const frameIds = await this.getWaitFrameIds(tab.id!, frameId, false);
+      try {
+        await this.injectContentScript(
+          tab.id!,
+          ['inject-scripts/wait-helper.js'],
+          false,
+          'ISOLATED',
+          false,
+          frameIds,
+        );
+        const appear = params.appear !== false;
+        const resp = await this.sendMessageToTab(
+          tab.id!,
+          {
+            action: TOOL_MESSAGE_TYPES.WAIT_FOR_TEXT,
+            text: params.text,
+            appear,
+            timeout: timeoutMs,
+          },
+          frameId,
+        );
+        if (!resp || resp.success !== true) {
+          return createErrorResponse(
+            resp && resp.reason === 'timeout'
+              ? `wait_for timed out after ${timeoutMs}ms for text: ${params.text}`
+              : `wait_for failed: ${resp && resp.error ? resp.error : 'unknown error'}`,
+          );
+        }
+        return this.createJsonSuccess({
+          success: true,
+          action: 'wait',
+          kind: 'text',
+          appear,
+          text: params.text,
+          matched: resp.matched || null,
+          tookMs: resp.tookMs,
+        });
+      } catch (e) {
+        return createErrorResponse(
+          `wait_for failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    if (params.ref || params.selector) {
+      const useClickableWait = !!params.ref || params.clickable === true;
+      const selectorType = params.selectorType || 'css';
+      const visible = params.visible !== false;
+      const shouldSearchAllFrames = typeof frameId !== 'number' && !params.ref;
+      const frameIds = await this.getWaitFrameIds(tab.id!, frameId, shouldSearchAllFrames);
+      try {
+        await this.injectContentScript(
+          tab.id!,
+          ['inject-scripts/wait-helper.js'],
+          false,
+          'ISOLATED',
+          false,
+          frameIds,
+        );
+        const buildMessage = (_candidateFrameId: number) =>
+          useClickableWait
+            ? {
+                action: TOOL_MESSAGE_TYPES.WAIT_FOR_CLICKABLE,
+                ref: params.ref,
+                selector: params.selector,
+                isXPath: selectorType === 'xpath',
+                timeout: timeoutMs,
+              }
+            : {
+                action: TOOL_MESSAGE_TYPES.WAIT_FOR_SELECTOR,
+                selector: params.selector,
+                isXPath: selectorType === 'xpath',
+                visible,
+                timeout: timeoutMs,
+              };
+        const waitResult =
+          !useClickableWait && visible === false && frameIds.length > 1
+            ? await this.waitForAllFrames(tab.id!, frameIds, buildMessage)
+            : await this.waitForAnyFrame(tab.id!, frameIds, buildMessage);
+        const resp = waitResult.response;
+        if (!resp || resp.success !== true) {
+          if (waitResult.reason === 'timeout' || resp?.reason === 'timeout') {
+            const target = params.ref || params.selector || 'target';
+            const summary = useClickableWait
+              ? `clickable target: ${target}`
+              : `${visible ? 'visible' : 'hidden'} selector: ${target}`;
+            return createErrorResponse(`wait_for timed out after ${timeoutMs}ms for ${summary}`);
+          }
+          return createErrorResponse(
+            `wait_for failed: ${waitResult.error || (resp && resp.error ? resp.error : 'unknown error')}`,
+          );
+        }
+        return this.createJsonSuccess({
+          success: true,
+          action: 'wait',
+          kind: useClickableWait ? 'clickable' : 'selector',
+          ref: params.ref,
+          selector: params.selector,
+          selectorType,
+          visible: useClickableWait ? undefined : visible,
+          matched: resp.matched || null,
+          matchedFrameId: waitResult.frameId,
+          tookMs: resp.tookMs,
+        });
+      } catch (e) {
+        return createErrorResponse(
+          `wait_for failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    if (hasDownloadCondition) {
+      try {
+        const download = await waitForDownload({
+          filenameContains: filenameContains || undefined,
+          waitForComplete: params.waitForComplete !== false,
+          timeoutMs,
+          startedAfter: waitStartedAt,
+        });
+        return this.createJsonSuccess({
+          success: true,
+          action: 'wait',
+          kind: 'download',
+          download,
+          tookMs: Date.now() - waitStartedAt,
+        });
+      } catch (e) {
+        return createErrorResponse(
+          `wait_for download failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    if (hasNetworkCondition) {
+      try {
+        const result = await waitForCapturedRequest({
+          tabId: tab.id!,
+          urlPattern: urlPattern || undefined,
+          method: method || undefined,
+          status: hasStatusCondition ? Number(params.status) : undefined,
+          timeoutMs,
+          startedAfter: waitStartedAt,
+          includeStatic: params.includeStatic === true,
+        });
+        return this.createJsonSuccess({
+          success: true,
+          action: 'wait',
+          kind: 'network',
+          backend: result.backend,
+          request: result.request,
+          tookMs: result.tookMs,
+        });
+      } catch (e) {
+        return createErrorResponse(
+          `wait_for network failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    const seconds = Math.max(0, Math.min(Number(params.duration || 0), 30));
+    if (!seconds) {
+      return createErrorResponse(
+        'Provide text, ref, selector, download/network filters, or duration > 0 for wait action',
+      );
+    }
+    await new Promise((r) => setTimeout(r, seconds * 1000));
+    return this.createJsonSuccess({
+      success: true,
+      action: 'wait',
+      kind: 'sleep',
+      duration: seconds,
+    });
+  }
+
   private async executeAction(params: ComputerParams, tab: chrome.tabs.Tab): Promise<ToolResult> {
     if (!tab.id) {
       return createErrorResponse(ERROR_MESSAGES.TAB_NOT_FOUND + ': Active tab has no ID');
@@ -360,7 +733,13 @@ class ComputerTool extends BaseBrowserToolExecutor {
 
         try {
           if (params.ref) {
-            await this.injectContentScript(tab.id, ['inject-scripts/accessibility-tree-helper.js']);
+            await this.injectContentScript(
+              tab.id,
+              ['inject-scripts/accessibility-tree-helper.js'],
+              false,
+              'ISOLATED',
+              true,
+            );
             // Scroll element into view first to ensure it's visible
             try {
               await this.sendMessageToTab(tab.id, { action: 'focusByRef', ref: params.ref });
@@ -377,7 +756,13 @@ class ComputerTool extends BaseBrowserToolExecutor {
               resolvedBy = 'ref';
             }
           } else if (params.selector) {
-            await this.injectContentScript(tab.id, ['inject-scripts/accessibility-tree-helper.js']);
+            await this.injectContentScript(
+              tab.id,
+              ['inject-scripts/accessibility-tree-helper.js'],
+              false,
+              'ISOLATED',
+              true,
+            );
             const selectorType = params.selectorType || 'css';
             const ensured = await this.sendMessageToTab(tab.id, {
               action: TOOL_MESSAGE_TYPES.ENSURE_REF_FOR_SELECTOR,
@@ -630,7 +1015,13 @@ class ComputerTool extends BaseBrowserToolExecutor {
         // If ref is provided, resolve center via accessibility helper
         if (params.ref) {
           try {
-            await this.injectContentScript(tab.id, ['inject-scripts/accessibility-tree-helper.js']);
+            await this.injectContentScript(
+              tab.id,
+              ['inject-scripts/accessibility-tree-helper.js'],
+              false,
+              'ISOLATED',
+              true,
+            );
             const resolved = await this.sendMessageToTab(tab.id, {
               action: TOOL_MESSAGE_TYPES.RESOLVE_REF,
               ref: params.ref,
@@ -644,7 +1035,13 @@ class ComputerTool extends BaseBrowserToolExecutor {
         } else if (params.selector) {
           // Support selector-based click
           try {
-            await this.injectContentScript(tab.id, ['inject-scripts/accessibility-tree-helper.js']);
+            await this.injectContentScript(
+              tab.id,
+              ['inject-scripts/accessibility-tree-helper.js'],
+              false,
+              'ISOLATED',
+              true,
+            );
             const selectorType = params.selectorType || 'css';
             const ensured = await this.sendMessageToTab(
               tab.id,
@@ -770,7 +1167,13 @@ class ComputerTool extends BaseBrowserToolExecutor {
           if (stale) return stale;
         }
         if (params.startRef || params.ref) {
-          await this.injectContentScript(tab.id, ['inject-scripts/accessibility-tree-helper.js']);
+          await this.injectContentScript(
+            tab.id,
+            ['inject-scripts/accessibility-tree-helper.js'],
+            false,
+            'ISOLATED',
+            true,
+          );
         }
         if (params.startRef) {
           try {
@@ -850,7 +1253,13 @@ class ComputerTool extends BaseBrowserToolExecutor {
         let coord = params.coordinates ? project(params.coordinates)! : (undefined as any);
         if (params.ref) {
           try {
-            await this.injectContentScript(tab.id, ['inject-scripts/accessibility-tree-helper.js']);
+            await this.injectContentScript(
+              tab.id,
+              ['inject-scripts/accessibility-tree-helper.js'],
+              false,
+              'ISOLATED',
+              true,
+            );
             const resolved = await this.sendMessageToTab(tab.id, {
               action: TOOL_MESSAGE_TYPES.RESOLVE_REF,
               ref: params.ref,
@@ -1071,79 +1480,20 @@ class ComputerTool extends BaseBrowserToolExecutor {
         }
       }
       case 'wait': {
-        const hasTextCondition =
-          typeof (params as any).text === 'string' && (params as any).text.trim().length > 0;
-        if (hasTextCondition) {
-          try {
-            // Conditional wait for text appearance/disappearance using content script
-            await this.injectContentScript(
-              tab.id,
-              ['inject-scripts/wait-helper.js'],
-              false,
-              'ISOLATED',
-              true,
-            );
-            const appear = (params as any).appear !== false; // default to true
-            const timeoutMs = Math.max(
-              0,
-              Math.min(((params as any).timeout as number) || 10000, 120000),
-            );
-            const resp = await this.sendMessageToTab(tab.id, {
-              action: TOOL_MESSAGE_TYPES.WAIT_FOR_TEXT,
-              text: (params as any).text,
-              appear,
-              timeout: timeoutMs,
-            });
-            if (!resp || resp.success !== true) {
-              return createErrorResponse(
-                resp && resp.reason === 'timeout'
-                  ? `wait_for timed out after ${timeoutMs}ms for text: ${(params as any).text}`
-                  : `wait_for failed: ${resp && resp.error ? resp.error : 'unknown error'}`,
-              );
-            }
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify({
-                    success: true,
-                    action: 'wait_for',
-                    appear,
-                    text: (params as any).text,
-                    matched: resp.matched || null,
-                    tookMs: resp.tookMs,
-                  }),
-                },
-              ],
-              isError: false,
-            };
-          } catch (e) {
-            return createErrorResponse(
-              `wait_for failed: ${e instanceof Error ? e.message : String(e)}`,
-            );
-          }
-        } else {
-          const seconds = Math.max(0, Math.min((params as any).duration || 0, 30));
-          if (!seconds)
-            return createErrorResponse('Duration parameter is required and must be > 0');
-          await new Promise((r) => setTimeout(r, seconds * 1000));
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({ success: true, action: 'wait', duration: seconds }),
-              },
-            ],
-            isError: false,
-          };
-        }
+        return this.handleWait(params, tab);
       }
       case 'scroll_to': {
         if (!params.ref) {
           return createErrorResponse('ref is required for scroll_to action');
         }
         try {
-          await this.injectContentScript(tab.id, ['inject-scripts/accessibility-tree-helper.js']);
+          await this.injectContentScript(
+            tab.id,
+            ['inject-scripts/accessibility-tree-helper.js'],
+            false,
+            'ISOLATED',
+            true,
+          );
           const resp = await this.sendMessageToTab(tab.id, {
             action: 'focusByRef',
             ref: params.ref,

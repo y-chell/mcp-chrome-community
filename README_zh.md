@@ -307,12 +307,12 @@ https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
 
 ### 2026-04-25 v1.1 优先级
 
-- [ ] `P0` iframe / Shadow DOM / ref 定位稳定化
+- [x] `P0` iframe / Shadow DOM / ref 定位稳定化
   - 先解决“元素明明在页面里，但工具总说 not found”这类问题
   - 关联问题：`#172`、`#126`
   - 主要模块：`app/chrome-extension/entrypoints/background/tools/browser/read-page.ts`、`interaction.ts`、`computer.ts`、`inject-scripts/accessibility-tree-helper.js`、`click-helper.js`、`fill-helper.js`
 
-- [ ] `P0` 动态页面等待与断言
+- [x] `P0` 动态页面等待与断言
   - 补齐“等文本出现/消失”“等元素可点击”“等请求完成”“等下载完成”这类高频动作，减少 AI 乱点和抢跑
   - 关联问题：`#93`、`#200`、`#43`
   - 主要模块：`computer.ts`、`common.ts`、`download.ts`、`network-capture.ts`、`app/chrome-extension/entrypoints/background/record-replay/engine/policies/wait.ts`

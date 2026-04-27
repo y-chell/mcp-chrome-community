@@ -119,10 +119,23 @@ export interface StepDrag extends StepBase {
 export interface StepWait extends StepBase {
   type: 'wait';
   condition:
-    | { selector: string; visible?: boolean }
+    | { selector: string; visible?: boolean; selectorType?: 'css' | 'xpath'; clickable?: boolean }
+    | { ref: string; clickable: true; selectorType?: 'css' | 'xpath' }
     | { text: string; appear?: boolean }
     | { navigation: true }
     | { networkIdle: true }
+    | {
+        download: true;
+        filenameContains?: string;
+        waitForComplete?: boolean;
+      }
+    | {
+        network: true;
+        urlPattern?: string;
+        method?: string;
+        status?: number;
+        includeStatic?: boolean;
+      }
     | { sleep: number };
 }
 
