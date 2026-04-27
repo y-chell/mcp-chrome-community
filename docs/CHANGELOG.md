@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **iframe / Shadow DOM / ref targeting stability**: `chrome_read_page`, `chrome_computer`, and interaction tools now preserve ref-to-frame routing across iframes, reducing false `not found` failures when elements are visible but live in nested frames
+- **Dynamic page wait reliability**: wait actions now reliably handle text appear/disappear, selector visible/hidden, clickable targets, network completion, and download completion across iframes and open Shadow DOM trees
+- **Native/server test baseline**: community bridge tests no longer fail on unrelated coverage and module-resolution issues, making CI and local verification stable again
+
+### Changed
+
+- **Record-replay wait coverage**: record-replay wait handlers and legacy wait nodes now use the same richer wait capabilities as browser tools, including clickable, download, and network waits
+
 ## [v1.0.3] - 2026-04-25
 
 ### Fixed
