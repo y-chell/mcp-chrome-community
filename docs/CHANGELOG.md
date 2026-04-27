@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.4] - 2026-04-27
+
 ### Fixed
 
 - **iframe / Shadow DOM / ref targeting stability**: `chrome_read_page`, `chrome_computer`, and interaction tools now preserve ref-to-frame routing across iframes, reducing false `not found` failures when elements are visible but live in nested frames
