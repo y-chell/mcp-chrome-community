@@ -12,10 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **iframe / Shadow DOM / ref targeting stability**: `chrome_read_page`, `chrome_computer`, and interaction tools now preserve ref-to-frame routing across iframes, reducing false `not found` failures when elements are visible but live in nested frames
 - **Dynamic page wait reliability**: wait actions now reliably handle text appear/disappear, selector visible/hidden, clickable targets, network completion, and download completion across iframes and open Shadow DOM trees
 - **Native/server test baseline**: community bridge tests no longer fail on unrelated coverage and module-resolution issues, making CI and local verification stable again
+- **Native HTTP MCP response handling**: `/sse`, `/messages`, and `/mcp` now avoid double-writing headers/body when the MCP SDK owns the raw response, fixing `ERR_HTTP_HEADERS_SENT` and broken Connect flows after initialization
 
 ### Changed
 
 - **Record-replay wait coverage**: record-replay wait handlers and legacy wait nodes now use the same richer wait capabilities as browser tools, including clickable, download, and network waits
+- **Stable extension ID guard for production builds**: production `wxt build` now requires `CHROME_EXTENSION_KEY` by default so local rebuilds do not silently generate a new unpacked extension ID; only one-off builds that explicitly set `ALLOW_UNSTABLE_EXTENSION_ID=1` skip the guard
 
 ## [v1.0.3] - 2026-04-25
 

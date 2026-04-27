@@ -16,6 +16,9 @@ const CHROME_EXTENSION_KEY = process.env.CHROME_EXTENSION_KEY?.trim();
 const REQUIRE_CHROME_EXTENSION_KEY = /^(1|true|yes)$/i.test(
   process.env.REQUIRE_CHROME_EXTENSION_KEY?.trim() || '',
 );
+const ALLOW_UNSTABLE_EXTENSION_ID = /^(1|true|yes)$/i.test(
+  process.env.ALLOW_UNSTABLE_EXTENSION_ID?.trim() || '',
+);
 const EXPECTED_CHROME_EXTENSION_ID = 'hbdgbgagpkpjffpklnamcljpakneikee';
 const WXT_OUT_DIR = process.env.WXT_OUT_DIR?.trim();
 const STATIC_ASSET_DIRS = ['inject-scripts', 'workers', '_locales'] as const;
@@ -25,6 +28,7 @@ const MCP_HTTP_HOST = (process.env.CHROME_MCP_HOST || process.env.MCP_HTTP_HOST 
   .replace(/\/+$/, '');
 // Detect dev mode early for manifest-level switches
 const IS_DEV = process.env.NODE_ENV !== 'production' && process.env.MODE !== 'production';
+const REQUIRE_STABLE_EXTENSION_ID = !IS_DEV && !ALLOW_UNSTABLE_EXTENSION_ID;
 
 function deriveChromeExtensionIdFromKey(key: string): string {
   const hash = createHash('sha256').update(Buffer.from(key, 'base64')).digest();
@@ -40,11 +44,11 @@ function deriveChromeExtensionIdFromKey(key: string): string {
 }
 
 function validateReleaseExtensionKey(key: string | undefined): void {
-  if (!REQUIRE_CHROME_EXTENSION_KEY) return;
+  if (!REQUIRE_CHROME_EXTENSION_KEY && !REQUIRE_STABLE_EXTENSION_ID) return;
 
   if (!key || key === 'YOUR_PRIVATE_KEY_HERE') {
     throw new Error(
-      `CHROME_EXTENSION_KEY is required for release builds so the extension keeps the stable ID ${EXPECTED_CHROME_EXTENSION_ID}.`,
+      `CHROME_EXTENSION_KEY is required for production builds so the extension keeps the stable ID ${EXPECTED_CHROME_EXTENSION_ID}. If you intentionally want a one-off unstable unpacked ID, set ALLOW_UNSTABLE_EXTENSION_ID=1 before building.`,
     );
   }
 

@@ -104,6 +104,34 @@ export class Server {
     this.setupMcpRoutes();
   }
 
+  private sendRawJson(reply: FastifyReply, statusCode: number, payload: unknown): void {
+    if (reply.raw.destroyed || reply.raw.writableEnded) {
+      return;
+    }
+
+    reply.raw.statusCode = statusCode;
+
+    if (!reply.raw.headersSent) {
+      reply.raw.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    reply.raw.end(JSON.stringify(payload));
+  }
+
+  private sendRawText(reply: FastifyReply, statusCode: number, payload: string): void {
+    if (reply.raw.destroyed || reply.raw.writableEnded) {
+      return;
+    }
+
+    reply.raw.statusCode = statusCode;
+
+    if (!reply.raw.headersSent) {
+      reply.raw.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    }
+
+    reply.raw.end(payload);
+  }
+
   // ============================================================
   // Health Routes
   // ============================================================
@@ -168,11 +196,7 @@ export class Server {
     // SSE endpoint
     this.fastify.get('/sse', async (_, reply) => {
       try {
-        reply.raw.writeHead(HTTP_STATUS.OK, {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-        });
+        reply.hijack();
 
         const transport = new SSEServerTransport('/messages', reply.raw);
         this.transportsMap.set(transport.sessionId, transport);
@@ -183,12 +207,12 @@ export class Server {
 
         const server = createMcpServer();
         await server.connect(transport);
-
-        reply.raw.write(':\n\n');
       } catch (error) {
-        if (!reply.sent) {
-          reply.code(HTTP_STATUS.INTERNAL_SERVER_ERROR).send(ERROR_MESSAGES.INTERNAL_SERVER_ERROR);
-        }
+        this.sendRawText(
+          reply,
+          HTTP_STATUS.INTERNAL_SERVER_ERROR,
+          ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+        );
       }
     });
 
@@ -202,11 +226,14 @@ export class Server {
           return;
         }
 
+        reply.hijack();
         await transport.handlePostMessage(req.raw, reply.raw, req.body);
       } catch (error) {
-        if (!reply.sent) {
-          reply.code(HTTP_STATUS.INTERNAL_SERVER_ERROR).send(ERROR_MESSAGES.INTERNAL_SERVER_ERROR);
-        }
+        this.sendRawText(
+          reply,
+          HTTP_STATUS.INTERNAL_SERVER_ERROR,
+          ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+        );
       }
     });
 
@@ -242,13 +269,12 @@ export class Server {
       }
 
       try {
+        reply.hijack();
         await transport.handleRequest(request.raw, reply.raw, request.body);
       } catch (error) {
-        if (!reply.sent) {
-          reply
-            .code(HTTP_STATUS.INTERNAL_SERVER_ERROR)
-            .send({ error: ERROR_MESSAGES.MCP_REQUEST_PROCESSING_ERROR });
-        }
+        this.sendRawJson(reply, HTTP_STATUS.INTERNAL_SERVER_ERROR, {
+          error: ERROR_MESSAGES.MCP_REQUEST_PROCESSING_ERROR,
+        });
       }
     });
 
@@ -264,16 +290,10 @@ export class Server {
         return;
       }
 
-      reply.raw.setHeader('Content-Type', 'text/event-stream');
-      reply.raw.setHeader('Cache-Control', 'no-cache');
-      reply.raw.setHeader('Connection', 'keep-alive');
-      reply.raw.flushHeaders();
+      reply.hijack();
 
       try {
         await transport.handleRequest(request.raw, reply.raw);
-        if (!reply.sent) {
-          reply.hijack();
-        }
       } catch (error) {
         if (!reply.raw.writableEnded) {
           reply.raw.end();
@@ -298,16 +318,16 @@ export class Server {
       }
 
       try {
+        reply.hijack();
         await transport.handleRequest(request.raw, reply.raw);
-        if (!reply.sent) {
-          reply.code(HTTP_STATUS.NO_CONTENT).send();
+        if (!reply.raw.writableEnded) {
+          reply.raw.statusCode = HTTP_STATUS.NO_CONTENT;
+          reply.raw.end();
         }
       } catch (error) {
-        if (!reply.sent) {
-          reply
-            .code(HTTP_STATUS.INTERNAL_SERVER_ERROR)
-            .send({ error: ERROR_MESSAGES.MCP_SESSION_DELETION_ERROR });
-        }
+        this.sendRawJson(reply, HTTP_STATUS.INTERNAL_SERVER_ERROR, {
+          error: ERROR_MESSAGES.MCP_SESSION_DELETION_ERROR,
+        });
       }
     });
   }

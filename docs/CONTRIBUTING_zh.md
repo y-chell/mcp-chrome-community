@@ -56,6 +56,8 @@ pnpm dev
 - GitHub Release 构建必须配置仓库 Secret：`CHROME_EXTENSION_KEY`。
 - 这个 key 用来固定未打包扩展的 ID，Native Messaging 才能稳定匹配。
 - 如果你要换这个 key，必须同时更新 native host 里的 `EXTENSION_ID`，并一起改安装文档和排障文档。
+- 现在本地跑 `pnpm build:extension` 这类生产构建时，默认也会要求 `CHROME_EXTENSION_KEY`，防止误构建出新的扩展 ID。
+- 只有你明确就是要做一次临时的随机 ID 构建时，才手动设置 `ALLOW_UNSTABLE_EXTENSION_ID=1` 再去 build。
 
 ## 🏗️ 项目结构
 

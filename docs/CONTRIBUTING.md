@@ -56,6 +56,8 @@ pnpm dev
 - GitHub Release builds must provide the repository secret `CHROME_EXTENSION_KEY`.
 - That key is what keeps the unpacked extension ID stable for Native Messaging.
 - If you rotate that key, you must update the native host `EXTENSION_ID` and the install/troubleshooting docs in the same release.
+- Local production builds such as `pnpm build:extension` now require `CHROME_EXTENSION_KEY` by default so you do not silently rebuild an unpacked extension with a different ID.
+- Only set `ALLOW_UNSTABLE_EXTENSION_ID=1` when you intentionally want a one-off build with a random unpacked extension ID.
 
 ## 🏗️ Project Structure
 
