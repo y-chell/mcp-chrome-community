@@ -3,6 +3,7 @@ import { type Tool } from '@modelcontextprotocol/sdk/types.js';
 export const TOOL_NAMES = {
   BROWSER: {
     GET_WINDOWS_AND_TABS: 'get_windows_and_tabs',
+    LIST_FRAMES: 'chrome_list_frames',
     SEARCH_TABS_CONTENT: 'search_tabs_content',
     NAVIGATE: 'chrome_navigate',
     SCREENSHOT: 'chrome_screenshot',
@@ -29,9 +30,16 @@ export const TOOL_NAMES = {
     SEND_COMMAND_TO_INJECT_SCRIPT: 'chrome_send_command_to_inject_script',
     JAVASCRIPT: 'chrome_javascript',
     CONSOLE: 'chrome_console',
+    COLLECT_DEBUG_EVIDENCE: 'chrome_collect_debug_evidence',
     FILE_UPLOAD: 'chrome_upload_file',
+    GET_UPLOAD_STATUS: 'chrome_get_upload_status',
     READ_PAGE: 'chrome_read_page',
+    QUERY_ELEMENTS: 'chrome_query_elements',
+    GET_ELEMENT_HTML: 'chrome_get_element_html',
     COMPUTER: 'chrome_computer',
+    WAIT_FOR_TAB: 'chrome_wait_for_tab',
+    WAIT_FOR: 'chrome_wait_for',
+    ASSERT: 'chrome_assert',
     HANDLE_DIALOG: 'chrome_handle_dialog',
     HANDLE_DOWNLOAD: 'chrome_handle_download',
     USERSCRIPT: 'chrome_userscript',
@@ -53,6 +61,30 @@ export const TOOL_SCHEMAS: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {},
+      required: [],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.LIST_FRAMES,
+    description:
+      'List frames in a tab, including frame hierarchy, URLs, titles, and lightweight readiness/interactive signals. Use returned frameId values with tools that accept frameId.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: {
+          type: 'number',
+          description: 'Target an existing tab by ID (default: active tab).',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+        includeDetails: {
+          type: 'boolean',
+          description:
+            'Include per-frame title, readyState, and interactive-element signals (default: true).',
+        },
+      },
       required: [],
     },
   },
@@ -186,6 +218,100 @@ export const TOOL_SCHEMAS: Tool[] = [
         windowId: {
           type: 'number',
           description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.QUERY_ELEMENTS,
+    description:
+      'Query DOM elements directly and return a structured element list, including hidden elements when requested. Useful when chrome_read_page is too high-level and you need refs, attributes, visibility, enabled state, or exact DOM matches.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS or XPath selector to query.',
+        },
+        selectorType: {
+          type: 'string',
+          enum: ['css', 'xpath'],
+          description: 'Selector syntax (default: css). XPath does not cross shadow roots.',
+        },
+        refId: {
+          type: 'string',
+          description:
+            'Optional root ref from chrome_read_page. When provided, only query inside that element subtree.',
+        },
+        tabId: {
+          type: 'number',
+          description: 'Target an existing tab by ID (default: active tab).',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+        frameId: {
+          type: 'number',
+          description: 'Optional frame ID. When omitted, searches all readable frames in the tab.',
+        },
+        includeHidden: {
+          type: 'boolean',
+          description: 'Include hidden elements in the result (default: false).',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of returned elements (default: 25, max: 200).',
+        },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.GET_ELEMENT_HTML,
+    description:
+      'Get the real DOM HTML for a specific element, including hidden elements. Accepts a ref from chrome_read_page or a selector, and returns outerHTML by default.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ref: {
+          type: 'string',
+          description: 'Element ref from chrome_read_page or chrome_query_elements.',
+        },
+        refId: {
+          type: 'string',
+          description: 'Alias of ref for compatibility with read_page-style naming.',
+        },
+        selector: {
+          type: 'string',
+          description: 'CSS or XPath selector for the target element.',
+        },
+        selectorType: {
+          type: 'string',
+          enum: ['css', 'xpath'],
+          description: 'Selector syntax (default: css). XPath does not cross shadow roots.',
+        },
+        tabId: {
+          type: 'number',
+          description: 'Target an existing tab by ID (default: active tab).',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+        frameId: {
+          type: 'number',
+          description:
+            'Optional frame ID. When omitted, refs use remembered frame routing and selectors search all readable frames.',
+        },
+        includeOuterHtml: {
+          type: 'boolean',
+          description: 'Return outerHTML when true, innerHTML when false (default: true).',
+        },
+        maxLength: {
+          type: 'number',
+          description: 'Maximum returned HTML length in characters (default: 20000, max: 200000).',
         },
       },
       required: [],
@@ -362,6 +488,245 @@ export const TOOL_SCHEMAS: Tool[] = [
       required: ['action'],
     },
   },
+  {
+    name: TOOL_NAMES.BROWSER.WAIT_FOR_TAB,
+    description:
+      'Wait for a newly opened tab (or a specifically matched tab) and return its identity. Useful after clicks that open a payment/login/OAuth tab or pop a new browser window.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        openerTabId: {
+          type: 'number',
+          description:
+            'Optional opener/source tab ID. Helps identify tabs opened by the current workflow, including ones that already opened just before this tool call.',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Optional window ID filter. When omitted, tabs from any window can match.',
+        },
+        urlPattern: {
+          type: 'string',
+          description: 'Optional URL matcher string.',
+        },
+        titlePattern: {
+          type: 'string',
+          description: 'Optional title matcher string.',
+        },
+        match: {
+          type: 'string',
+          enum: ['contains', 'equals', 'regex'],
+          description: 'String match mode for urlPattern/titlePattern (default: contains).',
+        },
+        status: {
+          type: 'string',
+          enum: ['any', 'loading', 'complete'],
+          description: 'Desired tab load status (default: complete).',
+        },
+        active: {
+          type: 'boolean',
+          description: 'Optional active-tab filter.',
+        },
+        includeExisting: {
+          type: 'boolean',
+          description:
+            'Allow an already-open matching tab to be returned immediately. Best used together with openerTabId or a strong matcher.',
+        },
+        timeoutMs: {
+          type: 'number',
+          description: 'Overall timeout in milliseconds (default: 10000, max: 120000).',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.WAIT_FOR,
+    description:
+      'Wait for a browser condition to become true. Prefer this over ad-hoc polling JS for common checks such as element visibility, text changes, URL/title changes, JS predicates, network requests, network idle, and downloads.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'number', description: 'Target tab ID (default: active tab)' },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick the active tab when tabId is omitted.',
+        },
+        frameId: {
+          type: 'number',
+          description: 'Optional frame ID for selector/javascript waits.',
+        },
+        timeoutMs: {
+          type: 'number',
+          description: 'Overall timeout in milliseconds (default: 10000, max: 120000).',
+        },
+        pollIntervalMs: {
+          type: 'number',
+          description:
+            'Polling interval in milliseconds for url/title/javascript/exists waits (default: 200).',
+        },
+        includeStatic: {
+          type: 'boolean',
+          description:
+            'For condition.kind="network": whether to include document/static responses while capturing.',
+        },
+        condition: {
+          type: 'object',
+          description:
+            'Condition descriptor. Supported kinds: element, text, url, title, javascript, network, networkIdle, download, sleep.',
+          properties: {
+            kind: {
+              type: 'string',
+              enum: [
+                'element',
+                'text',
+                'url',
+                'title',
+                'javascript',
+                'network',
+                'networkIdle',
+                'download',
+                'sleep',
+              ],
+            },
+            selector: { type: 'string', description: 'For kind="element": CSS/XPath selector.' },
+            ref: {
+              type: 'string',
+              description:
+                'For kind="element" with state="clickable": element ref from chrome_read_page.',
+            },
+            selectorType: {
+              type: 'string',
+              enum: ['css', 'xpath'],
+              description: 'For kind="element": selector syntax (default: css).',
+            },
+            state: {
+              type: 'string',
+              enum: ['exists', 'visible', 'hidden', 'clickable'],
+              description: 'For kind="element": desired state (default: visible).',
+            },
+            text: { type: 'string', description: 'For kind="text": target text.' },
+            present: {
+              type: 'boolean',
+              description:
+                'For kind="text": whether the text should be present/appear (true, default) or disappear (false).',
+            },
+            value: {
+              type: 'string',
+              description:
+                'For kind="url" or kind="title": expected string/pattern. Omit when match="changed".',
+            },
+            match: {
+              type: 'string',
+              enum: ['contains', 'equals', 'regex', 'changed'],
+              description:
+                'For kind="url" or kind="title": matching mode (default: contains, or changed when value is omitted).',
+            },
+            predicate: {
+              type: 'string',
+              description:
+                'For kind="javascript": JS expression or function that should evaluate to a truthy value in page context.',
+            },
+            urlPattern: {
+              type: 'string',
+              description: 'For kind="network": URL substring to match.',
+            },
+            method: { type: 'string', description: 'For kind="network": HTTP method to match.' },
+            status: {
+              type: 'number',
+              description: 'For kind="network": HTTP status code to match.',
+            },
+            idleMs: {
+              type: 'number',
+              description: 'For kind="networkIdle": idle threshold in milliseconds.',
+            },
+            filenameContains: {
+              type: 'string',
+              description: 'For kind="download": filename or URL substring to match.',
+            },
+            waitForComplete: {
+              type: 'boolean',
+              description: 'For kind="download": whether to wait for completion (default: true).',
+            },
+            durationMs: {
+              type: 'number',
+              description: 'For kind="sleep": how long to wait in milliseconds (max: 30000).',
+            },
+          },
+          required: ['kind'],
+        },
+      },
+      required: ['condition'],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.ASSERT,
+    description:
+      'Assert that a browser condition becomes true within the timeout. Uses the same condition schema as chrome_wait_for, but returns an assertion-style result and fails clearly when the condition is not met.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'number', description: 'Target tab ID (default: active tab)' },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick the active tab when tabId is omitted.',
+        },
+        frameId: {
+          type: 'number',
+          description: 'Optional frame ID for selector/javascript assertions.',
+        },
+        timeoutMs: {
+          type: 'number',
+          description: 'Overall timeout in milliseconds (default: 10000, max: 120000).',
+        },
+        pollIntervalMs: {
+          type: 'number',
+          description:
+            'Polling interval in milliseconds for url/title/javascript/exists assertions (default: 200).',
+        },
+        includeStatic: {
+          type: 'boolean',
+          description:
+            'For condition.kind="network": whether to include document/static responses while capturing.',
+        },
+        condition: {
+          type: 'object',
+          description: 'Same condition schema as chrome_wait_for. sleep is not allowed.',
+          properties: {
+            kind: {
+              type: 'string',
+              enum: [
+                'element',
+                'text',
+                'url',
+                'title',
+                'javascript',
+                'network',
+                'networkIdle',
+                'download',
+              ],
+            },
+            selector: { type: 'string' },
+            ref: { type: 'string' },
+            selectorType: { type: 'string', enum: ['css', 'xpath'] },
+            state: { type: 'string', enum: ['exists', 'visible', 'hidden', 'clickable'] },
+            text: { type: 'string' },
+            present: { type: 'boolean' },
+            value: { type: 'string' },
+            match: { type: 'string', enum: ['contains', 'equals', 'regex', 'changed'] },
+            predicate: { type: 'string' },
+            urlPattern: { type: 'string' },
+            method: { type: 'string' },
+            status: { type: 'number' },
+            idleMs: { type: 'number' },
+            filenameContains: { type: 'string' },
+            waitForComplete: { type: 'boolean' },
+          },
+          required: ['kind'],
+        },
+      },
+      required: ['condition'],
+    },
+  },
   // {
   //   name: TOOL_NAMES.BROWSER.USERSCRIPT,
   //   description:
@@ -516,16 +881,36 @@ export const TOOL_SCHEMAS: Tool[] = [
         storeBase64: {
           type: 'boolean',
           description:
-            'return screenshot in base64 format (default: false) if you want to see the page, recommend set this to be true',
+            'Return screenshot data inline as compressed base64 (default: false). When true and savePng is omitted, the tool avoids saving a file by default to stay agent-friendly.',
         },
         fullPage: {
           type: 'boolean',
-          description: 'Store screenshot of the entire page (default: true)',
+          description: 'Capture the entire page instead of just the viewport (default: false).',
         },
         savePng: {
           type: 'boolean',
           description:
-            'Save screenshot as PNG file (default: true)，if you want to see the page, recommend set this to be false, and set storeBase64 to be true',
+            'Save screenshot as a PNG file in Downloads. Default: true, except when storeBase64=true and savePng is omitted, in which case it defaults to false.',
+        },
+        imageFormat: {
+          type: 'string',
+          enum: ['image/jpeg', 'image/webp'],
+          description: 'Inline base64 image format when storeBase64=true (default: image/jpeg).',
+        },
+        quality: {
+          type: 'number',
+          description:
+            'Inline base64 compression quality from 0.3 to 0.95. Lower means smaller output.',
+        },
+        maxOutputWidth: {
+          type: 'number',
+          description:
+            'Inline base64 max width in pixels. Helps keep screenshots small for model input.',
+        },
+        maxOutputHeight: {
+          type: 'number',
+          description:
+            'Inline base64 max height in pixels. Full-page captures are downscaled by default unless overridden.',
         },
       },
       required: [],
@@ -661,7 +1046,7 @@ export const TOOL_SCHEMAS: Tool[] = [
         url: {
           type: 'string',
           description:
-            'URL to capture network requests from. For action="start". If not provided, uses the current active tab.',
+            'For action="start": a concrete http(s) URL opens a fresh tab and captures from the first navigation; a Chrome match pattern (for example https://example.com/*) attaches to an already-open tab. If omitted, uses the current active tab.',
         },
         maxCaptureTime: {
           type: 'number',
@@ -673,7 +1058,8 @@ export const TOOL_SCHEMAS: Tool[] = [
         },
         includeStatic: {
           type: 'boolean',
-          description: 'Include static resources like images/scripts/styles (default: false)',
+          description:
+            'Include document/static responses such as HTML, images, scripts, and stylesheets (default: false). When false, top-level page documents and static assets are filtered, but XHR/fetch responses are still kept even if they return text/html; navigation-only pages may still produce 0 captured requests.',
         },
       },
       required: ['action'],
@@ -681,13 +1067,53 @@ export const TOOL_SCHEMAS: Tool[] = [
   },
   {
     name: TOOL_NAMES.BROWSER.HANDLE_DOWNLOAD,
-    description: 'Wait for a browser download and return details (id, filename, url, state, size)',
+    description:
+      'Wait for a browser download, get the latest matching download status, or list recent downloads with normalized status fields and final file paths.',
     inputSchema: {
       type: 'object',
       properties: {
-        filenameContains: { type: 'string', description: 'Filter by substring in filename or URL' },
-        timeoutMs: { type: 'number', description: 'Timeout in ms (default 60000, max 300000)' },
-        waitForComplete: { type: 'boolean', description: 'Wait until completed (default true)' },
+        action: {
+          type: 'string',
+          enum: ['wait', 'status', 'list'],
+          description:
+            'wait (default), status for latest matching download, or list for recent matches.',
+        },
+        id: { type: 'number', description: 'Filter by download ID.' },
+        filenameContains: {
+          type: 'string',
+          description: 'Filter by substring in filename, full path, URL, or final URL.',
+        },
+        timeoutMs: {
+          type: 'number',
+          description: 'For action="wait": timeout in ms (default 60000, max 300000).',
+        },
+        waitForComplete: {
+          type: 'boolean',
+          description: 'For action="wait": wait until completed/interrupted (default true).',
+        },
+        startedAfter: {
+          type: 'number',
+          description:
+            'Only include downloads whose startTime is on/after this Unix timestamp in ms.',
+        },
+        allowInterrupted: {
+          type: 'boolean',
+          description: 'For action="wait": treat interrupted downloads as a valid terminal result.',
+        },
+        state: {
+          type: 'string',
+          enum: ['in_progress', 'complete', 'interrupted'],
+          description: 'Filter by raw Chrome download state.',
+        },
+        status: {
+          type: 'string',
+          enum: ['pending', 'in_progress', 'completed', 'failed'],
+          description: 'Filter by normalized status.',
+        },
+        limit: {
+          type: 'number',
+          description: 'For action="list": maximum returned items (default 20, max 200).',
+        },
       },
       required: [],
     },
@@ -1186,9 +1612,80 @@ export const TOOL_SCHEMAS: Tool[] = [
     },
   },
   {
+    name: TOOL_NAMES.BROWSER.COLLECT_DEBUG_EVIDENCE,
+    description:
+      'Collect a compact debugging bundle for a tab: page context, optional screenshot, recent console logs, runtime exceptions, and a recent network-capture summary when available.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: {
+          type: 'number',
+          description: 'Target an existing tab by ID (default: active tab).',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+        includeScreenshot: {
+          type: 'boolean',
+          description: 'Include a compressed screenshot as base64 data (default: true).',
+        },
+        background: {
+          type: 'boolean',
+          description:
+            'Prefer background-friendly screenshot capture when possible (default: true).',
+        },
+        fullPage: {
+          type: 'boolean',
+          description: 'Capture a full-page screenshot instead of the current viewport.',
+        },
+        includeConsole: {
+          type: 'boolean',
+          description: 'Include console and runtime exception evidence (default: true).',
+        },
+        consoleMode: {
+          type: 'string',
+          enum: ['auto', 'buffer', 'snapshot'],
+          description:
+            'Console collection mode. auto prefers buffer and falls back to snapshot when needed (default: auto).',
+        },
+        includeExceptions: {
+          type: 'boolean',
+          description: 'Include uncaught runtime exceptions in console evidence (default: true).',
+        },
+        onlyErrors: {
+          type: 'boolean',
+          description: 'Only include error-level console messages (default: false).',
+        },
+        consoleLimit: {
+          type: 'number',
+          description: 'Maximum number of console messages to return (default: 20, max: 200).',
+        },
+        clearConsole: {
+          type: 'boolean',
+          description: 'Buffer mode only: clear buffered console entries before reading.',
+        },
+        clearConsoleAfterRead: {
+          type: 'boolean',
+          description: 'Buffer mode only: clear buffered console entries after reading.',
+        },
+        includeNetworkSummary: {
+          type: 'boolean',
+          description:
+            'Include a recent network-capture summary for this tab when available (default: true).',
+        },
+        networkLimit: {
+          type: 'number',
+          description: 'Maximum number of recent requests to include in the network summary.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: TOOL_NAMES.BROWSER.FILE_UPLOAD,
     description:
-      'Upload files to web forms with file input elements using Chrome DevTools Protocol',
+      'Upload files to web forms with file input elements using Chrome DevTools Protocol. Returns an uploadId plus browser-side selection status.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1223,6 +1720,35 @@ export const TOOL_SCHEMAS: Tool[] = [
         },
       },
       required: ['selector'],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.GET_UPLOAD_STATUS,
+    description:
+      'Get the latest browser-side status for a file upload attempt. Can look up by uploadId or inspect the current file input selection by selector.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        uploadId: {
+          type: 'string',
+          description: 'Upload session id returned by chrome_upload_file.',
+        },
+        selector: {
+          type: 'string',
+          description:
+            'File input selector to inspect when uploadId is omitted or for a live re-check.',
+        },
+        tabId: {
+          type: 'number',
+          description:
+            'Target tab ID for live inspection (default: active tab or the session tab).',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+      },
+      required: [],
     },
   },
   {

@@ -15,14 +15,26 @@ class WindowTool extends BaseBrowserToolExecutor {
             tabCount++;
             return {
               tabId: tab.id || 0,
+              windowId: tab.windowId || window.id || 0,
               url: tab.url || '',
               title: tab.title || '',
               active: tab.active || false,
+              status: tab.status || 'unknown',
+              openerTabId: tab.openerTabId,
+              index: tab.index,
             };
           }) || [];
 
         return {
           windowId: window.id || 0,
+          focused: window.focused || false,
+          state: window.state || 'unknown',
+          type: window.type || 'normal',
+          top: window.top,
+          left: window.left,
+          width: window.width,
+          height: window.height,
+          activeTabId: tabs.find((tab) => tab.active)?.tabId || null,
           tabs: tabs,
         };
       });

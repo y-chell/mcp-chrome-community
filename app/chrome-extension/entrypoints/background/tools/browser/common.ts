@@ -452,6 +452,63 @@ interface CloseTabsToolParams {
 class CloseTabsTool extends BaseBrowserToolExecutor {
   name = TOOL_NAMES.BROWSER.CLOSE_TABS;
 
+  private serializeTabContext(tab: chrome.tabs.Tab | null | undefined) {
+    if (!tab || typeof tab.id !== 'number') return null;
+    return {
+      tabId: tab.id,
+      windowId: tab.windowId,
+      url: tab.url || '',
+      title: tab.title || '',
+      active: tab.active || false,
+      index: tab.index,
+    };
+  }
+
+  private async getActiveContextForWindow(
+    windowId: number,
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, windowId });
+      return this.serializeTabContext(activeTab);
+    } catch {
+      return null;
+    }
+  }
+
+  private async getPostCloseContext(
+    tabsToClose: chrome.tabs.Tab[],
+    preferredWindowId?: number,
+  ): Promise<{
+    affectedWindowIds: number[];
+    activeContextAfterClose: Record<string, unknown> | null;
+    remainingActiveContexts: Record<string, unknown>[];
+  }> {
+    const affectedWindowIds = Array.from(
+      new Set(
+        tabsToClose
+          .map((tab) => tab.windowId)
+          .filter((windowId): windowId is number => Number.isInteger(windowId)),
+      ),
+    );
+
+    const remainingActiveContexts = (
+      await Promise.all(
+        affectedWindowIds.map((windowId) => this.getActiveContextForWindow(windowId)),
+      )
+    ).filter((context): context is Record<string, unknown> => context !== null);
+
+    const activeContextAfterClose =
+      remainingActiveContexts.find((context) => context.windowId === preferredWindowId) ||
+      remainingActiveContexts[0] ||
+      null;
+
+    return {
+      affectedWindowIds,
+      activeContextAfterClose,
+      remainingActiveContexts,
+    };
+  }
+
   async execute(args: CloseTabsToolParams): Promise<ToolResult> {
     const { tabIds, url } = args;
     let urlPattern = url;
@@ -506,7 +563,10 @@ class CloseTabsTool extends BaseBrowserToolExecutor {
         }
 
         console.log(`Found ${tabs.length} tabs with URL pattern: ${urlPattern}`);
-        const tabIdsToClose = tabs
+        const tabsToClose = tabs.filter(
+          (tab): tab is chrome.tabs.Tab => typeof tab.id === 'number',
+        );
+        const tabIdsToClose = tabsToClose
           .map((tab) => tab.id)
           .filter((id): id is number => id !== undefined);
 
@@ -514,7 +574,10 @@ class CloseTabsTool extends BaseBrowserToolExecutor {
           return createErrorResponse('Found tabs but could not get their IDs');
         }
 
+        const preferredWindowId =
+          tabsToClose.find((tab) => tab.active)?.windowId ?? tabsToClose[0]?.windowId;
         await chrome.tabs.remove(tabIdsToClose);
+        const postCloseContext = await this.getPostCloseContext(tabsToClose, preferredWindowId);
 
         return {
           content: [
@@ -525,6 +588,9 @@ class CloseTabsTool extends BaseBrowserToolExecutor {
                 message: `Closed ${tabIdsToClose.length} tabs with URL: ${url}`,
                 closedCount: tabIdsToClose.length,
                 closedTabIds: tabIdsToClose,
+                activeContextAfterClose: postCloseContext.activeContextAfterClose,
+                remainingActiveContexts: postCloseContext.remainingActiveContexts,
+                affectedWindowIds: postCloseContext.affectedWindowIds,
               }),
             },
           ],
@@ -548,7 +614,8 @@ class CloseTabsTool extends BaseBrowserToolExecutor {
           }),
         );
 
-        const validTabIds = existingTabs
+        const validTabs = existingTabs.filter((tab): tab is chrome.tabs.Tab => tab !== null);
+        const validTabIds = validTabs
           .filter((tab): tab is chrome.tabs.Tab => tab !== null)
           .map((tab) => tab.id)
           .filter((id): id is number => id !== undefined);
@@ -569,7 +636,10 @@ class CloseTabsTool extends BaseBrowserToolExecutor {
           };
         }
 
+        const preferredWindowId =
+          validTabs.find((tab) => tab.active)?.windowId ?? validTabs[0]?.windowId;
         await chrome.tabs.remove(validTabIds);
+        const postCloseContext = await this.getPostCloseContext(validTabs, preferredWindowId);
 
         return {
           content: [
@@ -581,6 +651,9 @@ class CloseTabsTool extends BaseBrowserToolExecutor {
                 closedCount: validTabIds.length,
                 closedTabIds: validTabIds,
                 invalidTabIds: tabIds.filter((id) => !validTabIds.includes(id)),
+                activeContextAfterClose: postCloseContext.activeContextAfterClose,
+                remainingActiveContexts: postCloseContext.remainingActiveContexts,
+                affectedWindowIds: postCloseContext.affectedWindowIds,
               }),
             },
           ],
@@ -597,6 +670,7 @@ class CloseTabsTool extends BaseBrowserToolExecutor {
       }
 
       await chrome.tabs.remove(activeTab.id);
+      const postCloseContext = await this.getPostCloseContext([activeTab], activeTab.windowId);
 
       return {
         content: [
@@ -607,6 +681,9 @@ class CloseTabsTool extends BaseBrowserToolExecutor {
               message: 'Closed active tab',
               closedCount: 1,
               closedTabIds: [activeTab.id],
+              activeContextAfterClose: postCloseContext.activeContextAfterClose,
+              remainingActiveContexts: postCloseContext.remainingActiveContexts,
+              affectedWindowIds: postCloseContext.affectedWindowIds,
             }),
           },
         ],

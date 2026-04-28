@@ -5,10 +5,21 @@ import { cdpSessionManager } from '@/utils/cdp-session-manager';
 import { NETWORK_FILTERS } from '@/common/constants';
 
 interface NetworkDebuggerStartToolParams {
-  url?: string; // URL to navigate to or focus. If not provided, uses active tab.
+  url?: string; // Concrete http(s) URL opens a new tab; URL pattern attaches to an existing tab.
   maxCaptureTime?: number;
   inactivityTimeout?: number; // Inactivity timeout (milliseconds)
   includeStatic?: boolean; // if include static resources
+}
+
+function isConcreteHttpUrl(url: string): boolean {
+  if (!url || url.includes('*')) return false;
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 // Network request object interface
@@ -36,6 +47,44 @@ interface NetworkRequestInfo {
   [key: string]: any; // Allow other properties from debugger events
 }
 
+type CaptureStopReason =
+  | 'user_request'
+  | 'inactivity_timeout'
+  | 'max_capture_time'
+  | 'replaced_by_new_capture';
+
+type IgnoredRequestReason = 'filteredByUrl' | 'filteredByMimeType' | 'overLimit';
+
+interface IgnoredRequestCounts {
+  filteredByUrl: number;
+  filteredByMimeType: number;
+  overLimit: number;
+}
+
+interface CaptureInfo {
+  startTime: number;
+  tabUrl?: string;
+  tabTitle?: string;
+  maxCaptureTime: number;
+  inactivityTimeout: number;
+  includeStatic: boolean;
+  requests: Record<string, NetworkRequestInfo>;
+  limitReached: boolean;
+  ignoredRequests: IgnoredRequestCounts;
+}
+
+interface CompletedCaptureRecord {
+  tabId: number;
+  completedAt: number;
+  reason: CaptureStopReason;
+  data: any;
+}
+
+interface StopCaptureOptions {
+  reason?: CaptureStopReason;
+  cacheResult?: boolean;
+}
+
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const MAX_RESPONSE_BODY_SIZE_BYTES = 1 * 1024 * 1024; // 1MB
 const DEFAULT_MAX_CAPTURE_TIME_MS = 3 * 60 * 1000; // 3 minutes
@@ -46,12 +95,13 @@ const DEFAULT_INACTIVITY_TIMEOUT_MS = 60 * 1000; // 1 minute
  */
 class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
   name = TOOL_NAMES.BROWSER.NETWORK_DEBUGGER_START;
-  private captureData: Map<number, any> = new Map(); // tabId -> capture data
+  private captureData: Map<number, CaptureInfo> = new Map(); // tabId -> capture data
   private captureTimers: Map<number, NodeJS.Timeout> = new Map(); // tabId -> max capture timer
   private inactivityTimers: Map<number, NodeJS.Timeout> = new Map(); // tabId -> inactivity timer
   private lastActivityTime: Map<number, number> = new Map(); // tabId -> timestamp of last network activity
   private pendingResponseBodies: Map<string, Promise<any>> = new Map(); // requestId -> promise for getResponseBody
   private requestCounters: Map<number, number> = new Map(); // tabId -> count of captured requests (after filtering)
+  private completedCaptures: Map<number, CompletedCaptureRecord> = new Map(); // tabId -> last completed result waiting to be read
   private static MAX_REQUESTS_PER_CAPTURE = 100; // Max requests to store to prevent memory issues
   public static instance: NetworkDebuggerStartTool | null = null;
 
@@ -66,6 +116,59 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
     chrome.debugger.onDetach.addListener(this.handleDebuggerDetach.bind(this));
     chrome.tabs.onRemoved.addListener(this.handleTabRemoved.bind(this));
     chrome.tabs.onCreated.addListener(this.handleTabCreated.bind(this));
+  }
+
+  private createIgnoredRequestCounts(): IgnoredRequestCounts {
+    return {
+      filteredByUrl: 0,
+      filteredByMimeType: 0,
+      overLimit: 0,
+    };
+  }
+
+  private noteIgnoredRequest(captureInfo: CaptureInfo, reason: IgnoredRequestReason): void {
+    captureInfo.ignoredRequests[reason] += 1;
+  }
+
+  private countIgnoredRequests(captureInfo: CaptureInfo): number {
+    return Object.values(captureInfo.ignoredRequests).reduce((sum, value) => sum + value, 0);
+  }
+
+  private storeCompletedCapture(tabId: number, data: any, reason: CaptureStopReason): void {
+    this.completedCaptures.set(tabId, {
+      tabId,
+      completedAt: Date.now(),
+      reason,
+      data,
+    });
+  }
+
+  public peekLatestCompletedCapture(): CompletedCaptureRecord | undefined {
+    let latest: CompletedCaptureRecord | undefined;
+
+    for (const entry of this.completedCaptures.values()) {
+      if (!latest || entry.completedAt > latest.completedAt) {
+        latest = entry;
+      }
+    }
+
+    return latest;
+  }
+
+  public consumeCompletedCapture(tabId?: number): CompletedCaptureRecord | undefined {
+    if (typeof tabId === 'number') {
+      const existing = this.completedCaptures.get(tabId);
+      if (existing) {
+        this.completedCaptures.delete(tabId);
+      }
+      return existing;
+    }
+
+    const latest = this.peekLatestCompletedCapture();
+    if (latest) {
+      this.completedCaptures.delete(latest.tabId);
+    }
+    return latest;
   }
 
   private handleTabRemoved(tabId: number) {
@@ -139,12 +242,13 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
       console.log(
         `NetworkDebuggerStartTool: Already capturing on tab ${tabId}. Stopping previous session.`,
       );
-      await this.stopCapture(tabId);
+      await this.stopCapture(tabId, { reason: 'replaced_by_new_capture', cacheResult: false });
     }
 
     try {
       // Get tab information
       const tab = await chrome.tabs.get(tabId);
+      this.completedCaptures.delete(tabId);
 
       // Attach via shared manager (handles conflicts and refcount)
       await cdpSessionManager.attach(tabId, 'network-capture');
@@ -169,6 +273,7 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
         includeStatic,
         requests: {},
         limitReached: false,
+        ignoredRequests: this.createIgnoredRequestCounts(),
       });
 
       // Initialize request counter
@@ -189,7 +294,10 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
             console.log(
               `NetworkDebuggerStartTool: Max capture time (${maxCaptureTime}ms) reached for tab ${tabId}.`,
             );
-            await this.stopCapture(tabId, true); // Auto-stop due to max time
+            await this.stopCapture(tabId, {
+              reason: 'max_capture_time',
+              cacheResult: true,
+            });
           }, maxCaptureTime),
         );
       }
@@ -290,7 +398,10 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
     console.log(`NetworkDebuggerStartTool: Stopping capture due to inactivity for tab ${tabId}.`);
     // Potentially, we might want to notify the client/user that this happened.
     // For now, just stop and make the results available if StopTool is called.
-    await this.stopCapture(tabId, true); // Pass a flag indicating it's an auto-stop
+    await this.stopCapture(tabId, {
+      reason: 'inactivity_timeout',
+      cacheResult: true,
+    });
   }
 
   /**
@@ -344,6 +455,7 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
       this.shouldFilterRequestByUrl(request.url) ||
       this.shouldFilterRequestByExtension(request.url, captureInfo.includeStatic)
     ) {
+      this.noteIgnoredRequest(captureInfo, 'filteredByUrl');
       return;
     }
 
@@ -351,6 +463,7 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
     if (currentCount >= NetworkDebuggerStartTool.MAX_REQUESTS_PER_CAPTURE) {
       // console.log(`NetworkDebuggerStartTool: Request limit (${NetworkDebuggerStartTool.MAX_REQUESTS_PER_CAPTURE}) reached for tab ${tabId}. Ignoring: ${request.url}`);
       captureInfo.limitReached = true; // Mark that limit was hit
+      this.noteIgnoredRequest(captureInfo, 'overLimit');
       return;
     }
 
@@ -402,6 +515,7 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
     // Secondary filtering based on MIME type, now that we have it
     if (this.shouldFilterByMimeType(response.mimeType, captureInfo.includeStatic)) {
       // console.log(`NetworkDebuggerStartTool: Filtering request by MIME type (${response.mimeType}): ${requestInfo.url}`);
+      this.noteIgnoredRequest(captureInfo, 'filteredByMimeType');
       delete captureInfo.requests[requestId]; // Remove from captured data
       // Note: We don't decrement requestCounter here as it's meant to track how many *potential* requests were processed up to MAX_REQUESTS.
       // Or, if MAX_REQUESTS is strictly for *stored* requests, then decrement. For now, let's assume it's for stored.
@@ -575,16 +689,15 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
     console.log(`NetworkDebuggerStartTool: Cleaned up resources for tab ${tabId}.`);
   }
 
-  // isAutoStop is true if stop was triggered by timeout, false if by user/explicit call
-  async stopCapture(tabId: number, isAutoStop: boolean = false): Promise<any> {
+  async stopCapture(tabId: number, options: StopCaptureOptions = {}): Promise<any> {
     const captureInfo = this.captureData.get(tabId);
     if (!captureInfo) {
       return { success: false, message: 'No capture in progress for this tab.' };
     }
 
-    console.log(
-      `NetworkDebuggerStartTool: Stopping capture for tab ${tabId}. Auto-stop: ${isAutoStop}`,
-    );
+    const { reason = 'user_request', cacheResult = false } = options;
+
+    console.log(`NetworkDebuggerStartTool: Stopping capture for tab ${tabId}. Reason: ${reason}`);
 
     try {
       // Attempt to disable network and detach via manager; it will no-op if others own the session
@@ -647,10 +760,18 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
     // Sort requests by requestTime
     processedRequests.sort((a, b) => (a.requestTime || 0) - (b.requestTime || 0));
 
+    const ignoredRequestCount = this.countIgnoredRequests(captureInfo);
+
     const resultData = {
       captureStartTime: captureInfo.startTime,
       captureEndTime: Date.now(),
       totalDurationMs: Date.now() - captureInfo.startTime,
+      settingsUsed: {
+        maxCaptureTime: captureInfo.maxCaptureTime,
+        inactivityTimeout: captureInfo.inactivityTimeout,
+        includeStatic: captureInfo.includeStatic,
+        maxRequests: NetworkDebuggerStartTool.MAX_REQUESTS_PER_CAPTURE,
+      },
       commonRequestHeaders,
       commonResponseHeaders,
       requests: processedRequests,
@@ -658,21 +779,31 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
       totalRequestsReceivedBeforeLimit: captureInfo.limitReached
         ? NetworkDebuggerStartTool.MAX_REQUESTS_PER_CAPTURE
         : processedRequests.length,
+      totalRequestsReceived: processedRequests.length + ignoredRequestCount,
       requestLimitReached: !!captureInfo.limitReached,
-      stoppedBy: isAutoStop
-        ? this.lastActivityTime.get(tabId)
-          ? 'inactivity_timeout'
-          : 'max_capture_time'
-        : 'user_request',
+      matchedRequests: processedRequests.length,
+      ignoredRequests: { ...captureInfo.ignoredRequests },
+      ignoredRequestCount,
+      stopReason: reason,
+      summary: {
+        matchedRequests: processedRequests.length,
+        ignoredRequests: { ...captureInfo.ignoredRequests },
+        ignoredRequestCount,
+        totalObservedRequests: processedRequests.length + ignoredRequestCount,
+        stopReason: reason,
+      },
       tabUrl: captureInfo.tabUrl,
       tabTitle: captureInfo.tabTitle,
     };
 
     console.log(
-      `NetworkDebuggerStartTool: Capture stopped for tab ${tabId}. ${resultData.requestCount} requests processed. Limit reached: ${resultData.requestLimitReached}. Stopped by: ${resultData.stoppedBy}`,
+      `NetworkDebuggerStartTool: Capture stopped for tab ${tabId}. ${resultData.requestCount} requests processed. Limit reached: ${resultData.requestLimitReached}. Stop reason: ${resultData.stopReason}`,
     );
 
     this.cleanupCapture(tabId); // Final cleanup of all internal states for this tab
+    if (cacheResult) {
+      this.storeCompletedCapture(tabId, resultData, reason);
+    }
 
     return {
       success: true,
@@ -777,22 +908,46 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
     );
 
     let tabToOperateOn: chrome.tabs.Tab | undefined;
+    let captureStarted = false;
 
     try {
+      const startCapture = async (tabId: number) => {
+        await this.startCaptureForTab(tabId, {
+          maxCaptureTime,
+          inactivityTimeout,
+          includeStatic,
+        });
+        captureStarted = true;
+      };
+
       if (targetUrl) {
-        const existingTabs = await chrome.tabs.query({
-          url: targetUrl.startsWith('http') ? targetUrl : `*://*/*${targetUrl}*`,
-        }); // More specific query
-        if (existingTabs.length > 0 && existingTabs[0]?.id) {
+        if (isConcreteHttpUrl(targetUrl)) {
+          const stagingTab = await chrome.tabs.create({ url: 'about:blank', active: true });
+          if (!stagingTab?.id) {
+            return createErrorResponse('Failed to create staging tab for network capture');
+          }
+
+          await startCapture(stagingTab.id);
+          tabToOperateOn = await chrome.tabs.update(stagingTab.id, {
+            url: targetUrl,
+            active: true,
+          });
+          if (!tabToOperateOn?.id) {
+            return createErrorResponse(`Failed to navigate staging tab to ${targetUrl}`);
+          }
+        } else {
+          const existingTabs = await chrome.tabs.query({ url: targetUrl });
+          if (existingTabs.length === 0 || !existingTabs[0]?.id) {
+            return createErrorResponse(
+              `No open tab matched URL pattern: ${targetUrl}. Open the page first, or pass a concrete https:// URL.`,
+            );
+          }
+
           tabToOperateOn = existingTabs[0];
           // Ensure window gets focus and tab is truly activated
           await chrome.windows.update(tabToOperateOn.windowId, { focused: true });
-          await chrome.tabs.update(tabToOperateOn.id!, { active: true });
-        } else {
-          tabToOperateOn = await chrome.tabs.create({ url: targetUrl, active: true });
-          // Wait for tab to be somewhat ready. A better way is to listen to tabs.onUpdated status='complete'
-          // but for debugger attachment, it just needs the tabId.
-          await new Promise((resolve) => setTimeout(resolve, 500)); // Short delay
+          await chrome.tabs.update(tabToOperateOn.id, { active: true });
+          await startCapture(tabToOperateOn.id);
         }
       } else {
         const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -808,17 +963,14 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
       }
       const tabId = tabToOperateOn.id;
 
-      // Use startCaptureForTab method to start capture
-      try {
-        await this.startCaptureForTab(tabId, {
-          maxCaptureTime,
-          inactivityTimeout,
-          includeStatic,
-        });
-      } catch (error: any) {
-        return createErrorResponse(
-          `Failed to start capture for tab ${tabId}: ${error.message || String(error)}`,
-        );
+      if (!captureStarted) {
+        try {
+          await startCapture(tabId);
+        } catch (error: any) {
+          return createErrorResponse(
+            `Failed to start capture for tab ${tabId}: ${error.message || String(error)}`,
+          );
+        }
       }
 
       return {
@@ -871,6 +1023,68 @@ class NetworkDebuggerStopTool extends BaseBrowserToolExecutor {
     NetworkDebuggerStopTool.instance = this;
   }
 
+  private buildSuccessResponse(
+    tabId: number,
+    resultData: any,
+    remainingCaptures: number[],
+    captureAlreadyStopped: boolean,
+  ): ToolResult {
+    const requestCount = resultData?.requestCount || 0;
+    const stopReason = resultData?.stopReason || 'user_request';
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            message: captureAlreadyStopped
+              ? `Capture had already stopped (${stopReason}). Returning the last completed result for tab ${tabId}.`
+              : `Capture for tab ${tabId} (${resultData?.tabUrl || 'N/A'}) stopped. ${requestCount} requests captured.`,
+            tabId,
+            tabUrl: resultData?.tabUrl || 'N/A',
+            tabTitle: resultData?.tabTitle || 'Unknown Tab',
+            requestCount,
+            matchedRequests: resultData?.matchedRequests || requestCount,
+            ignoredRequests: resultData?.ignoredRequests || {
+              filteredByUrl: 0,
+              filteredByMimeType: 0,
+              overLimit: 0,
+            },
+            ignoredRequestCount: resultData?.ignoredRequestCount || 0,
+            stopReason,
+            summary: resultData?.summary || {
+              matchedRequests: resultData?.matchedRequests || requestCount,
+              ignoredRequests: resultData?.ignoredRequests || {
+                filteredByUrl: 0,
+                filteredByMimeType: 0,
+                overLimit: 0,
+              },
+              ignoredRequestCount: resultData?.ignoredRequestCount || 0,
+              totalObservedRequests:
+                (resultData?.matchedRequests || requestCount) +
+                (resultData?.ignoredRequestCount || 0),
+              stopReason,
+            },
+            captureAlreadyStopped,
+            commonRequestHeaders: resultData?.commonRequestHeaders || {},
+            commonResponseHeaders: resultData?.commonResponseHeaders || {},
+            requests: resultData?.requests || [],
+            captureStartTime: resultData?.captureStartTime,
+            captureEndTime: resultData?.captureEndTime,
+            totalDurationMs: resultData?.totalDurationMs,
+            settingsUsed: resultData?.settingsUsed || {},
+            remainingCaptures,
+            totalRequestsReceived:
+              resultData?.totalRequestsReceived || resultData?.requestCount || 0,
+            requestLimitReached: resultData?.requestLimitReached || false,
+          }),
+        },
+      ],
+      isError: false,
+    };
+  }
+
   async execute(): Promise<ToolResult> {
     console.log(`NetworkDebuggerStopTool: Executing command.`);
 
@@ -888,6 +1102,10 @@ class NetworkDebuggerStopTool extends BaseBrowserToolExecutor {
     );
 
     if (ongoingCaptures.length === 0) {
+      const completedCapture = startTool.consumeCompletedCapture();
+      if (completedCapture) {
+        return this.buildSuccessResponse(completedCapture.tabId, completedCapture.data, [], true);
+      }
       return createErrorResponse('No active network captures found in any tab.');
     }
 
@@ -967,32 +1185,7 @@ class NetworkDebuggerStopTool extends BaseBrowserToolExecutor {
       );
     }
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            success: true,
-            message: `Capture for tab ${tabId} (${resultData.tabUrl || 'N/A'}) stopped. ${resultData.requestCount || 0} requests captured.`,
-            tabId: tabId,
-            tabUrl: resultData.tabUrl || 'N/A',
-            tabTitle: resultData.tabTitle || 'Unknown Tab',
-            requestCount: resultData.requestCount || 0,
-            commonRequestHeaders: resultData.commonRequestHeaders || {},
-            commonResponseHeaders: resultData.commonResponseHeaders || {},
-            requests: resultData.requests || [],
-            captureStartTime: resultData.captureStartTime,
-            captureEndTime: resultData.captureEndTime,
-            totalDurationMs: resultData.totalDurationMs,
-            settingsUsed: resultData.settingsUsed || {},
-            remainingCaptures: remainingCaptures,
-            totalRequestsReceived: resultData.totalRequestsReceived || resultData.requestCount || 0,
-            requestLimitReached: resultData.requestLimitReached || false,
-          }),
-        },
-      ],
-      isError: false,
-    };
+    return this.buildSuccessResponse(tabId, resultData, remainingCaptures, false);
   }
 }
 

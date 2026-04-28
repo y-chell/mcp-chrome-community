@@ -3,50 +3,24 @@ import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 import { LIMITS, NETWORK_FILTERS } from '@/common/constants';
 
-// Static resource file extensions
-const STATIC_RESOURCE_EXTENSIONS = [
-  '.jpg',
-  '.jpeg',
-  '.png',
-  '.gif',
-  '.svg',
-  '.webp',
-  '.ico',
-  '.bmp', // Images
-  '.css',
-  '.scss',
-  '.less', // Styles
-  '.js',
-  '.jsx',
-  '.ts',
-  '.tsx', // Scripts
-  '.woff',
-  '.woff2',
-  '.ttf',
-  '.eot',
-  '.otf', // Fonts
-  '.mp3',
-  '.mp4',
-  '.avi',
-  '.mov',
-  '.wmv',
-  '.flv',
-  '.ogg',
-  '.wav', // Media
-  '.pdf',
-  '.doc',
-  '.docx',
-  '.xls',
-  '.xlsx',
-  '.ppt',
-  '.pptx', // Documents
-];
+const STATIC_RESOURCE_EXTENSIONS = NETWORK_FILTERS.STATIC_RESOURCE_EXTENSIONS;
 
 // Ad and analytics domain list
 const AD_ANALYTICS_DOMAINS = NETWORK_FILTERS.EXCLUDED_DOMAINS;
 
+function isConcreteHttpUrl(url: string): boolean {
+  if (!url || url.includes('*')) return false;
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 interface NetworkCaptureStartToolParams {
-  url?: string; // URL to navigate to or focus. If not provided, uses active tab.
+  url?: string; // Concrete http(s) URL opens a new tab; URL pattern attaches to an existing tab.
   maxCaptureTime?: number; // Maximum capture time (milliseconds)
   inactivityTimeout?: number; // Inactivity timeout (milliseconds)
   includeStatic?: boolean; // Whether to include static resources
@@ -73,6 +47,20 @@ interface NetworkRequestInfo {
   mimeType?: string; // Response MIME type
 }
 
+type CaptureStopReason =
+  | 'user_request'
+  | 'inactivity_timeout'
+  | 'max_capture_time'
+  | 'replaced_by_new_capture';
+
+type IgnoredRequestReason = 'filteredByUrl' | 'filteredByMimeType' | 'overLimit';
+
+interface IgnoredRequestCounts {
+  filteredByUrl: number;
+  filteredByMimeType: number;
+  overLimit: number;
+}
+
 interface CaptureInfo {
   tabId: number;
   tabUrl: string;
@@ -84,6 +72,19 @@ interface CaptureInfo {
   inactivityTimeout: number;
   includeStatic: boolean;
   limitReached?: boolean; // Whether request count limit is reached
+  ignoredRequests: IgnoredRequestCounts;
+}
+
+interface CompletedCaptureRecord {
+  tabId: number;
+  completedAt: number;
+  reason: CaptureStopReason;
+  data: any;
+}
+
+interface StopCaptureOptions {
+  reason?: CaptureStopReason;
+  cacheResult?: boolean;
 }
 
 /**
@@ -97,41 +98,9 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
   private inactivityTimers: Map<number, NodeJS.Timeout> = new Map(); // tabId -> inactivity timer
   private lastActivityTime: Map<number, number> = new Map(); // tabId -> timestamp of last activity
   private requestCounters: Map<number, number> = new Map(); // tabId -> count of captured requests
+  private completedCaptures: Map<number, CompletedCaptureRecord> = new Map(); // tabId -> last completed result waiting to be read
   public static MAX_REQUESTS_PER_CAPTURE = LIMITS.MAX_NETWORK_REQUESTS; // Maximum capture request count
   private listeners: { [key: string]: (details: any) => void } = {};
-
-  // Static resource MIME types list (for filtering)
-  private static STATIC_MIME_TYPES_TO_FILTER = [
-    'image/', // All image types
-    'font/', // All font types
-    'audio/', // All audio types
-    'video/', // All video types
-    'text/css',
-    'text/javascript',
-    'application/javascript',
-    'application/x-javascript',
-    'application/pdf',
-    'application/zip',
-    'application/octet-stream', // Usually for downloads or generic binary data
-  ];
-
-  // API response MIME types list (these types are usually not filtered)
-  private static API_MIME_TYPES = [
-    'application/json',
-    'application/xml',
-    'text/xml',
-    'application/x-www-form-urlencoded',
-    'application/graphql',
-    'application/grpc',
-    'application/protobuf',
-    'application/x-protobuf',
-    'application/x-json',
-    'application/ld+json',
-    'application/problem+json',
-    'application/problem+xml',
-    'application/soap+xml',
-    'application/vnd.api+json',
-  ];
 
   constructor() {
     super();
@@ -144,6 +113,59 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
     chrome.tabs.onRemoved.addListener(this.handleTabRemoved.bind(this));
     // Listen for tab creation events
     chrome.tabs.onCreated.addListener(this.handleTabCreated.bind(this));
+  }
+
+  private createIgnoredRequestCounts(): IgnoredRequestCounts {
+    return {
+      filteredByUrl: 0,
+      filteredByMimeType: 0,
+      overLimit: 0,
+    };
+  }
+
+  private noteIgnoredRequest(captureInfo: CaptureInfo, reason: IgnoredRequestReason): void {
+    captureInfo.ignoredRequests[reason] += 1;
+  }
+
+  private countIgnoredRequests(captureInfo: CaptureInfo): number {
+    return Object.values(captureInfo.ignoredRequests).reduce((sum, value) => sum + value, 0);
+  }
+
+  private storeCompletedCapture(tabId: number, data: any, reason: CaptureStopReason): void {
+    this.completedCaptures.set(tabId, {
+      tabId,
+      completedAt: Date.now(),
+      reason,
+      data,
+    });
+  }
+
+  public peekLatestCompletedCapture(): CompletedCaptureRecord | undefined {
+    let latest: CompletedCaptureRecord | undefined;
+
+    for (const entry of this.completedCaptures.values()) {
+      if (!latest || entry.completedAt > latest.completedAt) {
+        latest = entry;
+      }
+    }
+
+    return latest;
+  }
+
+  public consumeCompletedCapture(tabId?: number): CompletedCaptureRecord | undefined {
+    if (typeof tabId === 'number') {
+      const existing = this.completedCaptures.get(tabId);
+      if (existing) {
+        this.completedCaptures.delete(tabId);
+      }
+      return existing;
+    }
+
+    const latest = this.peekLatestCompletedCapture();
+    if (latest) {
+      this.completedCaptures.delete(latest.tabId);
+    }
+    return latest;
   }
 
   /**
@@ -232,31 +254,54 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
   /**
    * Filter based on MIME type
    */
-  private shouldFilterByMimeType(mimeType: string, includeStatic: boolean): boolean {
-    if (!mimeType) return false;
+  private normalizeMimeType(mimeType: string): string {
+    return String(mimeType || '')
+      .split(';', 1)[0]
+      .trim()
+      .toLowerCase();
+  }
+
+  private isDocumentRequestType(requestType?: string): boolean {
+    const normalizedType = String(requestType || '').toLowerCase();
+    return normalizedType === 'main_frame' || normalizedType === 'sub_frame';
+  }
+
+  private shouldFilterByMimeType(
+    mimeType: string,
+    includeStatic: boolean,
+    requestType?: string,
+  ): boolean {
+    const normalizedMimeType = this.normalizeMimeType(mimeType);
+    if (!normalizedMimeType) return false;
 
     // Always keep API response types
-    if (NetworkCaptureStartTool.API_MIME_TYPES.some((type) => mimeType.startsWith(type))) {
+    if (NETWORK_FILTERS.API_MIME_TYPES.some((type) => normalizedMimeType.startsWith(type))) {
       return false;
     }
 
-    // If not including static resources, filter out static resource MIME types
-    if (!includeStatic) {
-      // Filter static resource MIME types
-      if (
-        NetworkCaptureStartTool.STATIC_MIME_TYPES_TO_FILTER.some((type) =>
-          mimeType.startsWith(type),
-        )
-      ) {
-        console.log(`NetworkCaptureV2: Filtering static resource by MIME type: ${mimeType}`);
-        return true;
-      }
+    if (includeStatic) {
+      return false;
+    }
 
-      // Filter all MIME types starting with text/ (except those already in API_MIME_TYPES)
-      if (mimeType.startsWith('text/')) {
-        console.log(`NetworkCaptureV2: Filtering text response: ${mimeType}`);
-        return true;
-      }
+    if (
+      NETWORK_FILTERS.STATIC_MIME_TYPES_TO_FILTER.some((type) =>
+        normalizedMimeType.startsWith(type),
+      )
+    ) {
+      console.log(
+        `NetworkCaptureV2: Filtering static resource by MIME type: ${normalizedMimeType}`,
+      );
+      return true;
+    }
+
+    if (
+      this.isDocumentRequestType(requestType) &&
+      (normalizedMimeType.startsWith('text/') || normalizedMimeType === 'application/xhtml+xml')
+    ) {
+      console.log(
+        `NetworkCaptureV2: Filtering document response by MIME type: ${normalizedMimeType}`,
+      );
+      return true;
     }
 
     return false;
@@ -318,7 +363,7 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
     if (!captureInfo) return;
 
     console.log(`NetworkCaptureV2: Stopping capture due to inactivity for tab ${tabId}`);
-    await this.stopCapture(tabId);
+    await this.stopCapture(tabId, { reason: 'inactivity_timeout', cacheResult: true });
   }
 
   /**
@@ -359,6 +404,7 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
       if (!captureInfo) return;
 
       if (this.shouldFilterRequest(details.url, captureInfo.includeStatic)) {
+        this.noteIgnoredRequest(captureInfo, 'filteredByUrl');
         return;
       }
 
@@ -368,6 +414,7 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
           `NetworkCaptureV2: Request limit (${NetworkCaptureStartTool.MAX_REQUESTS_PER_CAPTURE}) reached for tab ${details.tabId}, ignoring new request: ${details.url}`,
         );
         captureInfo.limitReached = true;
+        this.noteIgnoredRequest(captureInfo, 'overLimit');
         return;
       }
 
@@ -427,8 +474,13 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
       // Secondary filtering based on MIME type
       if (
         requestInfo.mimeType &&
-        this.shouldFilterByMimeType(requestInfo.mimeType, captureInfo.includeStatic)
+        this.shouldFilterByMimeType(
+          requestInfo.mimeType,
+          captureInfo.includeStatic,
+          requestInfo.type,
+        )
       ) {
+        this.noteIgnoredRequest(captureInfo, 'filteredByMimeType');
         delete captureInfo.requests[details.requestId];
 
         const currentCount = this.requestCounters.get(details.tabId) || 0;
@@ -574,12 +626,13 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
       console.log(
         `NetworkCaptureV2: Already capturing on tab ${tabId}. Stopping previous session.`,
       );
-      await this.stopCapture(tabId);
+      await this.stopCapture(tabId, { reason: 'replaced_by_new_capture', cacheResult: false });
     }
 
     try {
       // Get tab information
       const tab = await chrome.tabs.get(tabId);
+      this.completedCaptures.delete(tabId);
 
       // Initialize capture data
       this.captureData.set(tabId, {
@@ -592,6 +645,7 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
         inactivityTimeout,
         includeStatic,
         limitReached: false,
+        ignoredRequests: this.createIgnoredRequestCounts(),
       });
 
       // Initialize request counter
@@ -615,7 +669,7 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
             console.log(
               `NetworkCaptureV2: Max capture time (${maxCaptureTime}ms) reached for tab ${tabId}.`,
             );
-            await this.stopCapture(tabId);
+            await this.stopCapture(tabId, { reason: 'max_capture_time', cacheResult: true });
           }, maxCaptureTime),
         );
       }
@@ -637,12 +691,15 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
    */
   public async stopCapture(
     tabId: number,
+    options: StopCaptureOptions = {},
   ): Promise<{ success: boolean; message?: string; data?: any }> {
     const captureInfo = this.captureData.get(tabId);
     if (!captureInfo) {
       console.log(`NetworkCaptureV2: No capture in progress for tab ${tabId}`);
       return { success: false, message: `No capture in progress for tab ${tabId}` };
     }
+
+    const { reason = 'user_request', cacheResult = false } = options;
 
     try {
       // Record end time
@@ -683,8 +740,7 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
       // Sort by time
       processedRequests.sort((a, b) => (a.requestTime || 0) - (b.requestTime || 0));
 
-      // Remove listeners
-      this.removeListeners();
+      const ignoredRequestCount = this.countIgnoredRequests(captureInfo);
 
       // Prepare result data
       const resultData = {
@@ -703,12 +759,27 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
         requestCount: processedRequests.length,
         totalRequestsReceived: this.requestCounters.get(tabId) || 0,
         requestLimitReached: captureInfo.limitReached || false,
+        matchedRequests: processedRequests.length,
+        ignoredRequests: { ...captureInfo.ignoredRequests },
+        ignoredRequestCount,
+        stopReason: reason,
+        summary: {
+          matchedRequests: processedRequests.length,
+          ignoredRequests: { ...captureInfo.ignoredRequests },
+          ignoredRequestCount,
+          totalObservedRequests: processedRequests.length + ignoredRequestCount,
+          stopReason: reason,
+        },
         tabUrl: captureInfo.tabUrl,
         tabTitle: captureInfo.tabTitle,
       };
 
       // Clean up resources
       this.cleanupCapture(tabId);
+      this.removeListeners();
+      if (cacheResult) {
+        this.storeCompletedCapture(tabId, resultData, reason);
+      }
 
       return {
         success: true,
@@ -719,6 +790,7 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
 
       // Ensure resources are cleaned up
       this.cleanupCapture(tabId);
+      this.removeListeners();
 
       return {
         success: false,
@@ -799,22 +871,46 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
     try {
       // Get current tab or create new tab
       let tabToOperateOn: chrome.tabs.Tab;
+      let captureStarted = false;
+
+      const startCapture = async (tabId: number) => {
+        await this.startCaptureForTab(tabId, {
+          maxCaptureTime,
+          inactivityTimeout,
+          includeStatic,
+        });
+        captureStarted = true;
+      };
 
       if (targetUrl) {
-        // Find tabs matching the URL
-        const matchingTabs = await chrome.tabs.query({ url: targetUrl });
+        if (isConcreteHttpUrl(targetUrl)) {
+          // Attach listeners before the first navigation request so the page document
+          // doesn't get missed during tab creation.
+          const stagingTab = await chrome.tabs.create({ url: 'about:blank', active: true });
+          if (!stagingTab?.id) {
+            return createErrorResponse('Failed to create staging tab for network capture');
+          }
 
-        if (matchingTabs.length > 0) {
-          // Use existing tab
-          tabToOperateOn = matchingTabs[0];
-          console.log(`NetworkCaptureV2: Found existing tab with URL: ${targetUrl}`);
+          await startCapture(stagingTab.id);
+          tabToOperateOn = await chrome.tabs.update(stagingTab.id, {
+            url: targetUrl,
+            active: true,
+          });
+
+          if (!tabToOperateOn?.id) {
+            return createErrorResponse(`Failed to navigate staging tab to ${targetUrl}`);
+          }
         } else {
-          // Create new tab
-          console.log(`NetworkCaptureV2: Creating new tab with URL: ${targetUrl}`);
-          tabToOperateOn = await chrome.tabs.create({ url: targetUrl, active: true });
+          const matchingTabs = await chrome.tabs.query({ url: targetUrl });
+          if (matchingTabs.length === 0 || !matchingTabs[0]?.id) {
+            return createErrorResponse(
+              `No open tab matched URL pattern: ${targetUrl}. Open the page first, or pass a concrete https:// URL.`,
+            );
+          }
 
-          // Wait for page to load
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          tabToOperateOn = matchingTabs[0];
+          console.log(`NetworkCaptureV2: Found existing tab with URL pattern: ${targetUrl}`);
+          await startCapture(tabToOperateOn.id);
         }
       } else {
         // Use current active tab
@@ -829,17 +925,14 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
         return createErrorResponse('Failed to identify or create a tab');
       }
 
-      // Use startCaptureForTab method to start capture
-      try {
-        await this.startCaptureForTab(tabToOperateOn.id, {
-          maxCaptureTime,
-          inactivityTimeout,
-          includeStatic,
-        });
-      } catch (error: any) {
-        return createErrorResponse(
-          `Failed to start capture for tab ${tabToOperateOn.id}: ${error.message || String(error)}`,
-        );
+      if (!captureStarted) {
+        try {
+          await startCapture(tabToOperateOn.id);
+        } catch (error: any) {
+          return createErrorResponse(
+            `Failed to start capture for tab ${tabToOperateOn.id}: ${error.message || String(error)}`,
+          );
+        }
       }
 
       return {
@@ -884,6 +977,67 @@ class NetworkCaptureStopTool extends BaseBrowserToolExecutor {
     NetworkCaptureStopTool.instance = this;
   }
 
+  private buildSuccessResponse(
+    tabId: number,
+    resultData: any,
+    remainingCaptures: number[],
+    captureAlreadyStopped: boolean,
+  ): ToolResult {
+    const requestCount = resultData?.requestCount || 0;
+    const stopReason = resultData?.stopReason || 'user_request';
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            message: captureAlreadyStopped
+              ? `Capture had already stopped (${stopReason}). Returning the last completed result for tab ${tabId}.`
+              : `Capture complete. ${requestCount} requests captured.`,
+            tabId,
+            tabUrl: resultData?.tabUrl || 'N/A',
+            tabTitle: resultData?.tabTitle || 'Unknown Tab',
+            requestCount,
+            matchedRequests: resultData?.matchedRequests || requestCount,
+            ignoredRequests: resultData?.ignoredRequests || {
+              filteredByUrl: 0,
+              filteredByMimeType: 0,
+              overLimit: 0,
+            },
+            ignoredRequestCount: resultData?.ignoredRequestCount || 0,
+            stopReason,
+            summary: resultData?.summary || {
+              matchedRequests: resultData?.matchedRequests || requestCount,
+              ignoredRequests: resultData?.ignoredRequests || {
+                filteredByUrl: 0,
+                filteredByMimeType: 0,
+                overLimit: 0,
+              },
+              ignoredRequestCount: resultData?.ignoredRequestCount || 0,
+              totalObservedRequests:
+                (resultData?.matchedRequests || requestCount) +
+                (resultData?.ignoredRequestCount || 0),
+              stopReason,
+            },
+            captureAlreadyStopped,
+            commonRequestHeaders: resultData?.commonRequestHeaders || {},
+            commonResponseHeaders: resultData?.commonResponseHeaders || {},
+            requests: resultData?.requests || [],
+            captureStartTime: resultData?.captureStartTime,
+            captureEndTime: resultData?.captureEndTime,
+            totalDurationMs: resultData?.totalDurationMs,
+            settingsUsed: resultData?.settingsUsed || {},
+            totalRequestsReceived: resultData?.totalRequestsReceived || 0,
+            requestLimitReached: resultData?.requestLimitReached || false,
+            remainingCaptures,
+          }),
+        },
+      ],
+      isError: false,
+    };
+  }
+
   async execute(): Promise<ToolResult> {
     console.log(`NetworkCaptureStopTool: Executing`);
 
@@ -901,6 +1055,10 @@ class NetworkCaptureStopTool extends BaseBrowserToolExecutor {
       );
 
       if (ongoingCaptures.length === 0) {
+        const completedCapture = startTool.consumeCompletedCapture();
+        if (completedCapture) {
+          return this.buildSuccessResponse(completedCapture.tabId, completedCapture.data, [], true);
+        }
         return createErrorResponse('No active network captures found in any tab.');
       }
 
@@ -954,32 +1112,12 @@ class NetworkCaptureStopTool extends BaseBrowserToolExecutor {
           }
         }
       }
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({
-              success: true,
-              message: `Capture complete. ${stopResult.data?.requestCount || 0} requests captured.`,
-              tabId: primaryTabId,
-              tabUrl: stopResult.data?.tabUrl || 'N/A',
-              tabTitle: stopResult.data?.tabTitle || 'Unknown Tab',
-              requestCount: stopResult.data?.requestCount || 0,
-              commonRequestHeaders: stopResult.data?.commonRequestHeaders || {},
-              commonResponseHeaders: stopResult.data?.commonResponseHeaders || {},
-              requests: stopResult.data?.requests || [],
-              captureStartTime: stopResult.data?.captureStartTime,
-              captureEndTime: stopResult.data?.captureEndTime,
-              totalDurationMs: stopResult.data?.totalDurationMs,
-              settingsUsed: stopResult.data?.settingsUsed || {},
-              totalRequestsReceived: stopResult.data?.totalRequestsReceived || 0,
-              requestLimitReached: stopResult.data?.requestLimitReached || false,
-              remainingCaptures: Array.from(startTool.captureData.keys()),
-            }),
-          },
-        ],
-        isError: false,
-      };
+      return this.buildSuccessResponse(
+        primaryTabId,
+        stopResult.data,
+        Array.from(startTool.captureData.keys()),
+        false,
+      );
     } catch (error: any) {
       console.error('NetworkCaptureStopTool: Critical error:', error);
       return createErrorResponse(

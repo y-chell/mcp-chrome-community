@@ -199,12 +199,13 @@ Complete tool list: [Complete Tool List](docs/TOOLS.md)
 </details>
 
 <details>
-<summary><strong>🔍 Content Analysis (4 tools)</strong></summary>
+<summary><strong>🔍 Content Analysis (5 tools)</strong></summary>
 
 - `search_tabs_content` - AI-powered semantic search across browser tabs
 - `chrome_get_web_content` - Extract HTML/text content from pages
 - `chrome_get_interactive_elements` - Find clickable elements
 - `chrome_console` - Capture and retrieve console output from browser tabs
+- `chrome_collect_debug_evidence` - Bundle screenshot, console/runtime errors, and recent network evidence
 </details>
 
 <details>
@@ -323,12 +324,12 @@ The next community-fork milestone is not "add as many tools as possible". The pr
   - Related issues: `#93`, `#200`, `#43`
   - Primary modules: `computer.ts`, `common.ts`, `download.ts`, `network-capture.ts`, `app/chrome-extension/entrypoints/background/record-replay/engine/policies/wait.ts`
 
-- [ ] `P1` Make screenshots smaller and default to agent-friendly output
+- [x] `P1` Make screenshots smaller and default to agent-friendly output
   - Reduce token blow-ups, prefer targeted captures, and improve the save/download flow
   - Related issues: `#163`, `#207`
   - Primary modules: `screenshot.ts`, `packages/shared/src/tools.ts`, `app/chrome-extension/utils/image-utils.ts`
 
-- [ ] `P1` Improve console / dialog / network result quality
+- [x] `P1` Improve console / dialog / network result quality
   - Make `chrome_console` more useful for deep objects, handle DevTools conflicts better, and improve dialog/network inspection quality
   - Related issues: `#215`, `#191`, `#201`
   - Primary modules: `console.ts`, `console-buffer.ts`, `dialog.ts`, `javascript.ts`, `network-capture.ts`
@@ -342,6 +343,76 @@ The next community-fork milestone is not "add as many tools as possible". The pr
   - Build on top of `chrome_computer`, `chrome_upload_file`, `chrome_handle_download`, and `record_replay_flow_run` to improve `hover`, drag/drop, clipboard actions, tab groups, complex forms, and reusable flows
   - Related issues: `#141`, `#171`, `#205`
   - Primary modules: `computer.ts`, `file-upload.ts`, `download.ts`, `bookmark.ts`, `history.ts`, `app/chrome-extension/entrypoints/background/tools/record-replay.ts`
+
+### 2026-04-28 Agent UX Hardening Backlog
+
+> Some of the items below already exist at the implementation level, but real-world Claude Code / Codex usage shows they still need more productization and hardening before they feel truly agent-grade.
+
+- [x] `P1` Stabilize `chrome_network_capture` lifecycle and matching behavior
+  - We observed cases where `start` succeeds but `stop` reports no active capture, or returns `0 requests captured`; URL pattern handling, session binding, navigation timing, and result delivery still need hardening
+  - The priority is an agent-friendly “wait for request / wait for response” experience, not just a low-level capture entry point
+  - Current behavior after the hardening pass: exact `https://...` URLs pre-bind capture before navigation, wildcard patterns attach to an existing tab, and `includeStatic=false` still keeps XHR/fetch responses such as `text/html` while filtering top-level document/static responses
+  - Suggested subtasks:
+    1. Normalize URL pattern rules and document exact URL vs wildcard vs current-tab defaults
+    2. Bind capture lifecycle more explicitly to tab / frame / navigation state so `start` cannot silently lose ownership
+    3. Return more stable summary fields such as matched requests, ignored requests, and stop reason
+    4. Add regression coverage for start → navigate → stop, repeated start/stop, timeout stop, and no-request stop
+  - Acceptance direction: on a normal `https` page, `start` → navigate → `stop` should reliably return captured requests instead of sporadic “no active capture” failures
+  - Primary modules: `network-capture.ts`, `common.ts`, `app/chrome-extension/utils/cdp-session-manager.ts`
+
+- [x] `P1` Promote waiting / assertions from internal policy to first-class tools
+  - Waiting exists in internal strategies and composite flows, but agents still benefit from explicit `wait_for` / `assert` style tools for element visibility, text changes, URL changes, network idle, and similar high-frequency conditions
+  - The goal is not “possible via custom JS”, but “cheap and reliable for agents to use correctly”
+  - Suggested subtasks:
+    1. Define one condition schema covering element, text, URL, title, JS predicate, and network-idle waits
+    2. Standardize timeout, polling interval, failure messages, and debugging context
+    3. Reuse the same waiting core across `chrome_computer`, record/replay flows, and download handling
+    4. Add integration cases for dynamic lists, lazy loading, disabled-to-enabled buttons, and redirects
+  - Acceptance direction: common waits such as “element appears”, “text changes”, and “navigation finishes” should no longer require ad-hoc JS or manual retries
+  - Primary modules: `computer.ts`, `common.ts`, `app/chrome-extension/entrypoints/background/record-replay/engine/policies/wait.ts`
+
+- [x] `P1` Improve element querying and DOM observability
+  - `read_page` already works well for visible-page understanding, but it is still not the most direct fit for bulk element queries, raw DOM/attributes, hidden elements, or local HTML fragments
+  - Candidate additions include `query_elements`, `get_element_html`, and `get_dom_snapshot`
+  - Suggested subtasks:
+    1. Design a batch element-query response that includes ref, selector hint, text, role, attributes, visibility, and enabled state
+    2. Add local DOM / outerHTML reads for hidden elements and subtree inspection
+    3. Align ref semantics across `read_page` and future DOM-query tools to reduce cross-tool mismatches
+    4. Add regression samples for tables, lists, complex forms, and Shadow DOM
+  - Acceptance direction: agents should be able to reliably obtain either “a list of matching elements” or “the real DOM fragment for this node”, not just a page summary
+  - Primary modules: `read-page.ts`, `inject-scripts/accessibility-tree-helper.js`, `javascript.ts`
+
+- [x] `P1` Close the loop for uploads and downloads
+  - Upload and download actions exist, but agents still need stable status confirmation: whether the transfer finished, where the file ended up, and why it failed when it does fail
+  - Prioritize download lists, final saved paths, upload progress, and failure reasons
+  - Suggested subtasks:
+    1. Add download status queries with pending / in_progress / completed / failed, file name, path, size, and mime type
+    2. Add upload status queries with target element, start time, completion state, and failure reason
+    3. Document compatibility boundaries for browser-native dialogs, OS file pickers, and background downloads
+    4. Add coverage for single-file, multi-file, duplicate-name, and canceled upload/download scenarios
+  - Acceptance direction: after an upload or download, the agent should know the final status and file destination directly instead of guessing or probing with extra scripts
+  - Primary modules: `download.ts`, `file-upload.ts`, `common.ts`
+
+- [x] `P2` Better workflow orchestration for iframes, tabs, and windows
+  - The low-level building blocks exist, but complex workflows still need clearer frame enumeration / switching, new-tab waiting, result-tab identification, and cross-window isolation
+  - This matters most for payments, sign-in flows, embedded editors, and multi-step redirects
+  - Suggested subtasks:
+    1. Add frame enumeration / switching with frame hierarchy, URL, title, and interactability hints
+    2. Add new-tab waiting, result-tab identification, and context restoration after tab close
+    3. Clarify active-tab selection and background-run boundaries under multi-window concurrency
+    4. Add integration scenarios for OAuth, payment pages, embedded editors, and redirect-heavy flows
+  - Acceptance direction: multi-step flows across iframe / new-tab / new-window boundaries should run without frequently jumping into the wrong context
+  - Primary modules: `interaction.ts`, `computer.ts`, `app/native-server/src/mcp/mcp-server.ts`
+
+- [x] `P2` Stronger console / runtime-error / debugging evidence tools
+  - Beyond arbitrary JS execution, agents need direct access to console logs, runtime errors, failure snapshots, and packaged debugging context for self-diagnosis
+  - Suggested subtasks:
+    1. Add recent logs, errors-only, clear-logs, and runtime-exception summaries
+    2. Standardize a failure evidence bundle: screenshot, URL, title, recent console, and key-request summary
+    3. Improve deep-object serialization, circular-reference handling, DevTools-conflict handling, and truncation behavior
+    4. Add debugging samples for frontend exceptions, resource-load failures, and cross-origin issues
+  - Acceptance direction: when a page “does nothing”, the agent should be able to collect enough debugging evidence without immediately falling back to custom JS
+  - Primary modules: `console.ts`, `console-buffer.ts`, `javascript.ts`, `screenshot.ts`
 
 ### Mid-Term Directions
 

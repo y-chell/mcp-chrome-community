@@ -1,5 +1,6 @@
 export { navigateTool, closeTabsTool, switchTabTool } from './common';
 export { windowTool } from './window';
+export { listFramesTool, waitForTabTool } from './tab-orchestration';
 export { screenshotTool } from './screenshot';
 export { webFetcherTool, getInteractiveElementsTool } from './web-fetcher';
 export { clickTool, fillTool } from './interaction';
@@ -15,9 +16,12 @@ export { bookmarkSearchTool, bookmarkAddTool, bookmarkDeleteTool } from './bookm
 export { injectScriptTool, sendCommandToInjectScriptTool } from './inject-script';
 export { javascriptTool } from './javascript';
 export { consoleTool } from './console';
-export { fileUploadTool } from './file-upload';
+export { collectDebugEvidenceTool } from './debug-evidence';
+export { fileUploadTool, uploadStatusTool } from './file-upload';
 export { readPageTool } from './read-page';
+export { queryElementsTool, getElementHtmlTool } from './dom-query';
 export { computerTool } from './computer';
+export { waitForTool, assertTool } from './wait-for';
 export { handleDialogTool } from './dialog';
 export { handleDownloadTool } from './download';
 export { userscriptTool } from './userscript';

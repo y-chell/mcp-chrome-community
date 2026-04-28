@@ -54,8 +54,14 @@ interface ScreenshotToolParams {
   storeBase64?: boolean;
   fullPage?: boolean;
   savePng?: boolean;
+  imageFormat?: 'image/jpeg' | 'image/webp';
+  quality?: number;
+  maxOutputWidth?: number;
+  maxOutputHeight?: number;
   maxHeight?: number; // Maximum height to capture in pixels (for infinite scroll pages)
 }
+
+type ScreenshotCaptureKind = 'viewport' | 'element' | 'fullPage';
 
 /** Page details returned by screenshot-helper content script */
 interface ScreenshotPageDetails {
@@ -108,17 +114,36 @@ function assertValidPageDetails(details: unknown): ScreenshotPageDetails {
 class ScreenshotTool extends BaseBrowserToolExecutor {
   name = TOOL_NAMES.BROWSER.SCREENSHOT;
 
+  private getCaptureKind(args: ScreenshotToolParams): ScreenshotCaptureKind {
+    if (args.selector) return 'element';
+    if (args.fullPage === true) return 'fullPage';
+    return 'viewport';
+  }
+
+  private getBase64CompressionProfile(kind: ScreenshotCaptureKind) {
+    switch (kind) {
+      case 'element':
+        return { quality: 0.82, maxOutputWidth: 1200, maxOutputHeight: 1200 };
+      case 'fullPage':
+        return { quality: 0.72, maxOutputWidth: 1280, maxOutputHeight: 2400 };
+      case 'viewport':
+      default:
+        return { quality: 0.78, maxOutputWidth: 1400, maxOutputHeight: 1400 };
+    }
+  }
+
+  private normalizeQuality(value: unknown, fallback: number): number {
+    const quality = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+    return Math.max(0.3, Math.min(quality, 0.95));
+  }
+
   /**
    * Execute screenshot operation
    */
   async execute(args: ScreenshotToolParams): Promise<ToolResult> {
-    const {
-      name = 'screenshot',
-      selector,
-      storeBase64 = false,
-      fullPage = false,
-      savePng = true,
-    } = args;
+    const { name = 'screenshot', selector, storeBase64 = false, fullPage = false } = args;
+    const savePng =
+      typeof args.savePng === 'boolean' ? args.savePng : storeBase64 === true ? false : true;
 
     console.log(`Starting screenshot with options:`, args);
 
@@ -141,7 +166,7 @@ class ScreenshotTool extends BaseBrowserToolExecutor {
     let finalImageDataUrl: string | undefined;
     let finalImageWidthCss: number | undefined;
     let finalImageHeightCss: number | undefined;
-    const results: any = { base64: null, fileSaved: false };
+    const results: any = { fileSaved: false };
     let originalScroll: { x: number; y: number } | null = null;
     let didPreparePage = false;
     let pageDetails: ScreenshotPageDetails | undefined;
@@ -282,25 +307,33 @@ class ScreenshotTool extends BaseBrowserToolExecutor {
         console.warn('Failed to set screenshot context:', e);
       }
       if (storeBase64 === true) {
+        const captureKind = this.getCaptureKind({ ...args, fullPage, selector });
+        const profile = this.getBase64CompressionProfile(captureKind);
+        const imageFormat = args.imageFormat || 'image/jpeg';
+        const quality = this.normalizeQuality(args.quality, profile.quality);
         // Compress image for base64 output to reduce size
         const compressed = await compressImage(finalImageDataUrl, {
-          scale: 0.7, // Reduce dimensions by 30%
-          quality: 0.8, // 80% quality for good balance
-          format: 'image/jpeg', // JPEG for better compression
+          scale: 1,
+          quality,
+          format: imageFormat,
+          maxWidth: args.maxOutputWidth ?? profile.maxOutputWidth,
+          maxHeight: args.maxOutputHeight ?? profile.maxOutputHeight,
         });
 
         // Include base64 data in response (without prefix)
         const base64Data = compressed.dataUrl.replace(/^data:image\/[^;]+;base64,/, '');
-        results.base64 = base64Data;
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({ base64Data, mimeType: compressed.mimeType }),
-            },
-          ],
-          isError: false,
+        results.base64Data = base64Data;
+        results.mimeType = compressed.mimeType;
+        results.base64Length = base64Data.length;
+        results.originalDimensions = {
+          width: compressed.originalWidth,
+          height: compressed.originalHeight,
         };
+        results.outputDimensions = {
+          width: compressed.width,
+          height: compressed.height,
+        };
+        results.captureKind = captureKind;
       }
 
       if (savePng === true) {

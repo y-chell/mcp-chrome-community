@@ -86,6 +86,18 @@ function getWebRequestCaptureInfo(tabId: number): any | undefined {
   return networkCaptureStartTool.captureData.get(tabId);
 }
 
+function getLatestCompletedDebuggerCapture(): { completedAt: number } | undefined {
+  return (
+    networkDebuggerStartTool as unknown as {
+      peekLatestCompletedCapture?: () => { completedAt: number } | undefined;
+    }
+  ).peekLatestCompletedCapture?.();
+}
+
+function getLatestCompletedWebRequestCapture(): { completedAt: number } | undefined {
+  return networkCaptureStartTool.peekLatestCompletedCapture?.();
+}
+
 function listCapturedRequests(captureInfo: any): any[] {
   if (!captureInfo || typeof captureInfo !== 'object') return [];
   const requests = captureInfo.requests;
@@ -260,6 +272,19 @@ class NetworkCaptureTool extends BaseBrowserToolExecutor {
         backendToStop = 'debugger';
       } else if (webActive) {
         backendToStop = 'webRequest';
+      } else if (args?.needResponseBody === true && getLatestCompletedDebuggerCapture()) {
+        backendToStop = 'debugger';
+      } else if (args?.needResponseBody === false && getLatestCompletedWebRequestCapture()) {
+        backendToStop = 'webRequest';
+      } else {
+        const latestDebugger = getLatestCompletedDebuggerCapture();
+        const latestWebRequest = getLatestCompletedWebRequestCapture();
+        if (latestDebugger || latestWebRequest) {
+          backendToStop =
+            (latestDebugger?.completedAt || 0) >= (latestWebRequest?.completedAt || 0)
+              ? 'debugger'
+              : 'webRequest';
+        }
       }
     }
 

@@ -156,16 +156,35 @@ export async function canvasToDataURL(
  */
 export async function compressImage(
   imageDataUrl: string,
-  options: { scale?: number; quality?: number; format?: 'image/jpeg' | 'image/webp' },
-): Promise<{ dataUrl: string; mimeType: string }> {
-  const { scale = 1.0, quality = 0.8, format = 'image/jpeg' } = options;
+  options: {
+    scale?: number;
+    quality?: number;
+    format?: 'image/jpeg' | 'image/webp';
+    maxWidth?: number;
+    maxHeight?: number;
+  },
+): Promise<{
+  dataUrl: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  originalWidth: number;
+  originalHeight: number;
+}> {
+  const { scale = 1.0, quality = 0.8, format = 'image/jpeg', maxWidth, maxHeight } = options;
 
   // 1. Create an ImageBitmap from the original data URL for efficient drawing.
   const imageBitmap = await createImageBitmapFromUrl(imageDataUrl);
 
-  // 2. Calculate the new dimensions based on the scale factor.
-  const newWidth = Math.round(imageBitmap.width * scale);
-  const newHeight = Math.round(imageBitmap.height * scale);
+  // 2. Calculate the new dimensions based on scale and optional max bounds.
+  const widthScale =
+    typeof maxWidth === 'number' && maxWidth > 0 ? maxWidth / imageBitmap.width : 1;
+  const heightScale =
+    typeof maxHeight === 'number' && maxHeight > 0 ? maxHeight / imageBitmap.height : 1;
+  const boundedScale = Math.min(1, widthScale, heightScale);
+  const finalScale = Math.min(scale, boundedScale);
+  const newWidth = Math.max(1, Math.round(imageBitmap.width * finalScale));
+  const newHeight = Math.max(1, Math.round(imageBitmap.height * finalScale));
 
   // 3. Use OffscreenCanvas for performance, as it doesn't need to be in the DOM.
   const canvas = new OffscreenCanvas(newWidth, newHeight);
@@ -190,5 +209,12 @@ export async function compressImage(
     reader.readAsDataURL(compressedDataUrl);
   });
 
-  return { dataUrl, mimeType: format };
+  return {
+    dataUrl,
+    mimeType: format,
+    width: newWidth,
+    height: newHeight,
+    originalWidth: imageBitmap.width,
+    originalHeight: imageBitmap.height,
+  };
 }

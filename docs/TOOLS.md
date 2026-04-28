@@ -29,18 +29,60 @@ List all currently open browser windows and tabs.
   "windows": [
     {
       "windowId": 123,
+      "focused": true,
+      "state": "normal",
+      "type": "normal",
+      "top": 80,
+      "left": 120,
+      "width": 1440,
+      "height": 900,
+      "activeTabId": 456,
       "tabs": [
         {
           "tabId": 456,
+          "windowId": 123,
           "url": "https://example.com",
           "title": "Example Page",
-          "active": true
+          "active": true,
+          "status": "complete",
+          "openerTabId": null,
+          "index": 0
         }
       ]
     }
   ]
 }
 ```
+
+**Response highlights**:
+
+- `windows[]`: each window includes `focused`, `state`, `type`, `top`, `left`, `width`, `height`, and `activeTabId`
+- `tabs[]`: each tab includes `windowId`, `status`, `openerTabId`, and `index`
+
+### `chrome_list_frames`
+
+List the frames inside a tab so you can target the right `frameId` for iframe workflows.
+
+**Parameters**:
+
+- `tabId` (number, optional): Target an existing tab by ID (default: active tab)
+- `windowId` (number, optional): Use the active tab from this window when `tabId` is omitted
+- `includeDetails` (boolean, optional): Include per-frame `title`, `readyState`, and interactive-element signals (default: true)
+
+**Example**:
+
+```json
+{
+  "tabId": 456,
+  "includeDetails": true
+}
+```
+
+**Response highlights**:
+
+- `frameCount`: number of discovered frames
+- `frames[]`: each frame includes `frameId`, `parentFrameId`, `depth`, `isTopFrame`, and `url`
+- When `includeDetails` is enabled, each frame may also include `title`, `readyState`, `interactiveElementCount`, and `hasInteractiveElements`
 
 ### `chrome_navigate`
 
@@ -68,21 +110,27 @@ Navigate to a URL with optional viewport control.
 
 ### `chrome_close_tabs`
 
-Close specific tabs or windows.
+Close specific tabs, close tabs by URL match, or close the active tab when no target is provided.
 
 **Parameters**:
 
 - `tabIds` (array, optional): Array of tab IDs to close
-- `windowIds` (array, optional): Array of window IDs to close
+- `url` (string, optional): Close tabs matching this URL or URL pattern; can be used instead of `tabIds`
 
 **Example**:
 
 ```json
 {
-  "tabIds": [123, 456],
-  "windowIds": [789]
+  "tabIds": [123, 456]
 }
 ```
+
+**Response highlights**:
+
+- `closedCount` and `closedTabIds`: which tabs were closed
+- `activeContextAfterClose`: the next active tab context chosen after closing
+- `remainingActiveContexts`: active-tab summaries for affected windows
+- `affectedWindowIds`: windows touched by this close operation
 
 ### `chrome_switch_tab`
 
@@ -101,6 +149,43 @@ Switch to a specific browser tab.
   "windowId": 123
 }
 ```
+
+### `chrome_wait_for_tab`
+
+Wait for a newly opened tab, or for a tab that matches a specific opener / URL / title condition.
+
+Useful after clicks that open OAuth, payment, sign-in, or redirect result tabs.
+
+To avoid accidental matches, an already-open tab is only returned immediately when you pass `openerTabId`, or when `includeExisting=true` with a real matcher such as `urlPattern` or `titlePattern`.
+
+**Parameters**:
+
+- `openerTabId` (number, optional): Match tabs opened by this source tab
+- `windowId` (number, optional): Only match tabs in this window
+- `urlPattern` (string, optional): URL matcher string
+- `titlePattern` (string, optional): Title matcher string
+- `match` (string, optional): `contains`, `equals`, or `regex` (default: `contains`)
+- `status` (string, optional): `any`, `loading`, or `complete` (default: `complete`)
+- `active` (boolean, optional): Optional active-tab filter
+- `includeExisting` (boolean, optional): Allow an already-open matching tab to be returned immediately
+- `timeoutMs` (number, optional): Overall timeout in milliseconds (default: `10000`, max: `120000`)
+
+**Example**:
+
+```json
+{
+  "openerTabId": 456,
+  "urlPattern": "auth.example.com",
+  "timeoutMs": 15000
+}
+```
+
+**Response highlights**:
+
+- `waitedMs`: how long the tool waited before a match was found
+- `tab`: includes `tabId`, `windowId`, `openerTabId`, `url`, `title`, `status`, `active`, and `index`
+- `tab.matchedBy`: `existing`, `created`, or `updated`
+- `tab.openedAfterStart`: whether the matched tab appeared after this tool started waiting
 
 ### `chrome_go_back_or_forward`
 
@@ -126,6 +211,13 @@ Navigate browser history.
 
 Take advanced screenshots with various options.
 
+Agent-friendly defaults:
+
+- `fullPage` defaults to `false`
+- `storeBase64` returns a compressed inline image sized for model input
+- if `storeBase64=true` and `savePng` is omitted, the tool does **not** save a file by default
+- set `savePng=true` explicitly if you want both inline data and a downloaded PNG file
+
 **Parameters**:
 
 - `name` (string, optional): Screenshot filename
@@ -134,30 +226,41 @@ Take advanced screenshots with various options.
 - `background` (boolean, optional): Attempt capture without bringing tab/window to foreground (viewport-only uses CDP)
 - `width` (number, optional): Width in pixels (default: 800)
 - `height` (number, optional): Height in pixels (default: 600)
-- `storeBase64` (boolean, optional): Return base64 data (default: false)
-- `fullPage` (boolean, optional): Capture full page (default: true)
+- `storeBase64` (boolean, optional): Return compressed base64 data inline (default: false)
+- `fullPage` (boolean, optional): Capture full page (default: false)
+- `savePng` (boolean, optional): Save a PNG file to Downloads. Default: `true`, except when `storeBase64=true` and `savePng` is omitted, in which case it defaults to `false`
+- `imageFormat` (string, optional): Inline base64 image format: `image/jpeg` or `image/webp` (default: `image/jpeg`)
+- `quality` (number, optional): Inline base64 compression quality, from `0.3` to `0.95`
+- `maxOutputWidth` / `maxOutputHeight` (number, optional): Downscale inline base64 output to keep it small for model input
+- `maxHeight` (number, optional): Maximum captured height for full-page screenshots before truncation
 
 **Example**:
 
 ```json
 {
   "selector": ".main-content",
-  "fullPage": true,
   "storeBase64": true,
-  "width": 1920,
-  "height": 1080
+  "savePng": false,
+  "maxOutputWidth": 1200
 }
 ```
 
-**Response**:
+**Response highlights**:
 
 ```json
 {
   "success": true,
-  "base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
-  "dimensions": {
+  "base64Data": "/9j/4AAQSkZJRgABAQ...",
+  "mimeType": "image/jpeg",
+  "base64Length": 182344,
+  "captureKind": "element",
+  "originalDimensions": {
     "width": 1920,
     "height": 1080
+  },
+  "outputDimensions": {
+    "width": 1200,
+    "height": 675
   }
 }
 ```
@@ -170,10 +273,10 @@ Start capturing network requests using webRequest API.
 
 **Parameters**:
 
-- `url` (string, optional): URL to navigate to and capture
-- `maxCaptureTime` (number, optional): Maximum capture time in ms (default: 30000)
-- `inactivityTimeout` (number, optional): Stop after inactivity in ms (default: 3000)
-- `includeStatic` (boolean, optional): Include static resources (default: false)
+- `url` (string, optional): A concrete `http(s)` URL opens a fresh tab and captures from the first navigation. A match pattern such as `https://example.com/*` attaches to an already-open tab.
+- `maxCaptureTime` (number, optional): Maximum capture time in ms (default: 180000)
+- `inactivityTimeout` (number, optional): Stop after inactivity in ms (default: 60000, set `0` to disable)
+- `includeStatic` (boolean, optional): Include document/static responses like HTML, images, scripts, and stylesheets (default: false). When false, top-level page documents and static assets are filtered, but XHR/fetch responses are still kept even if they return `text/html`; navigation-only pages may still produce 0 captured requests.
 
 **Example**:
 
@@ -196,19 +299,31 @@ Stop network capture and return collected data.
 ```json
 {
   "success": true,
-  "capturedRequests": [
+  "requestCount": 2,
+  "matchedRequests": 2,
+  "ignoredRequests": {
+    "filteredByUrl": 1,
+    "filteredByMimeType": 0,
+    "overLimit": 0
+  },
+  "ignoredRequestCount": 1,
+  "stopReason": "user_request",
+  "captureAlreadyStopped": false,
+  "requests": [
     {
       "url": "https://api.example.com/data",
       "method": "GET",
       "status": 200,
-      "requestHeaders": {...},
-      "responseHeaders": {...},
+      "specificRequestHeaders": {},
+      "specificResponseHeaders": {},
       "responseTime": 150
     }
   ],
   "summary": {
-    "totalRequests": 15,
-    "captureTime": 5000
+    "matchedRequests": 2,
+    "ignoredRequestCount": 1,
+    "totalObservedRequests": 3,
+    "stopReason": "user_request"
   }
 }
 ```
@@ -269,6 +384,142 @@ Example:
 ```
 
 Response contains `pageContent` (text tree), `viewport`, and a `refMapCount` summary. Use `chrome_get_interactive_elements` or your own logic to act on returned refs.
+
+### `chrome_query_elements`
+
+Query DOM elements directly and return a structured element list. Use this when `chrome_read_page` is too summary-oriented and you need exact matches, hidden nodes, attributes, or per-element refs.
+
+**Parameters**:
+
+- `selector` (string, required): CSS or XPath selector to query
+- `selectorType` (string, optional): `css` or `xpath` (default: `css`)
+- `refId` (string, optional): root ref from `chrome_read_page`; limits the query to that subtree
+- `tabId` / `windowId` / `frameId` (optional): choose the target tab or frame
+- `includeHidden` (boolean, optional): include hidden elements (default: `false`)
+- `limit` (number, optional): maximum returned elements (default: `25`, max: `200`)
+
+**Example**:
+
+```json
+{
+  "selector": ".line-item input",
+  "includeHidden": true,
+  "limit": 20
+}
+```
+
+**Response highlights**:
+
+- `elements[]`: each item includes `ref`, `selectorHint`, `text`, `role`, `attributes`, `visible`, `enabled`, `tagName`, `frameId`
+- `matchedFrameIds`: frames that returned matches
+- `truncated`: whether the result hit the limit or scan cap
+
+### `chrome_get_element_html`
+
+Get the real DOM HTML for a single element. Accepts a `ref` from `chrome_read_page` / `chrome_query_elements` or a selector. Returns `outerHTML` by default, including hidden elements.
+
+**Parameters**:
+
+- `ref` / `refId` (string, optional): element ref to inspect
+- `selector` (string, optional): CSS or XPath selector for the target element
+- `selectorType` (string, optional): `css` or `xpath` (default: `css`)
+- `tabId` / `windowId` / `frameId` (optional): choose the target tab or frame
+- `includeOuterHtml` (boolean, optional): return `outerHTML` when true, `innerHTML` when false (default: `true`)
+- `maxLength` (number, optional): maximum returned HTML length (default: `20000`, max: `200000`)
+
+**Example**:
+
+```json
+{
+  "ref": "ref_12",
+  "maxLength": 40000
+}
+```
+
+**Response highlights**:
+
+- `html`: HTML snippet for the matched node
+- `htmlLength`: original HTML length before truncation
+- `truncated`: whether the HTML was shortened
+- `ref`, `selectorHint`, `attributes`, `visible`, `enabled`, `tagName`, `frameId`
+
+### `chrome_console`
+
+Capture console logs and uncaught runtime exceptions from a tab.
+
+Use `mode: "buffer"` when you want recent logs, `onlyErrors: true` for error-only reads, and `clear` / `clearAfterRead` to avoid duplicate evidence on the next read.
+
+**Parameters**:
+
+- `tabId` / `windowId` / `url` (optional): choose the target tab
+- `background` (boolean, optional): do not focus the tab when navigating for capture
+- `mode` (string, optional): `snapshot` or `buffer` (default: `snapshot`)
+- `buffer` (boolean, optional): alias for `mode: "buffer"`
+- `includeExceptions` (boolean, optional): include uncaught runtime exceptions (default: `true`)
+- `maxMessages` / `limit` (number, optional): maximum returned console messages
+- `onlyErrors` (boolean, optional): only return error/assert logs
+- `pattern` (string, optional): regex filter for message / exception text
+- `clear` (boolean, optional): buffer mode only; clear before reading
+- `clearAfterRead` (boolean, optional): buffer mode only; clear after reading
+
+**Example**:
+
+```json
+{
+  "tabId": 456,
+  "mode": "buffer",
+  "onlyErrors": true,
+  "clearAfterRead": true,
+  "limit": 20
+}
+```
+
+**Response highlights**:
+
+- `messages[]`: recent console entries
+- `exceptions[]`: uncaught runtime exceptions
+- `messageCount`, `exceptionCount`
+- `captureStartTime`, `captureEndTime`, `totalDurationMs`
+- `messageLimitReached`, `droppedMessageCount`, `droppedExceptionCount`
+
+### `chrome_collect_debug_evidence`
+
+Collect a compact debugging bundle for the current page: tab context, optional screenshot, recent console/runtime evidence, and a recent network-capture summary when available.
+
+If `consoleMode` is `auto`, the tool prefers the per-tab console buffer and falls back to snapshot capture when needed.
+
+**Parameters**:
+
+- `tabId` / `windowId` (optional): choose the target tab
+- `includeScreenshot` (boolean, optional): include a compressed screenshot (default: `true`)
+- `background` (boolean, optional): prefer background-friendly screenshot capture (default: `true`)
+- `fullPage` (boolean, optional): capture full page instead of the viewport
+- `includeConsole` (boolean, optional): include console and runtime exception evidence (default: `true`)
+- `consoleMode` (string, optional): `auto`, `buffer`, or `snapshot` (default: `auto`)
+- `includeExceptions` (boolean, optional): include uncaught runtime exceptions (default: `true`)
+- `onlyErrors` (boolean, optional): only include error-level console logs
+- `consoleLimit` (number, optional): max console messages to return (default: `20`)
+- `clearConsole` / `clearConsoleAfterRead` (boolean, optional): buffer mode only
+- `includeNetworkSummary` (boolean, optional): include recent network-capture summary when available (default: `true`)
+- `networkLimit` (number, optional): max recent requests in the network summary
+
+**Example**:
+
+```json
+{
+  "tabId": 456,
+  "consoleMode": "auto",
+  "onlyErrors": true,
+  "includeNetworkSummary": true
+}
+```
+
+**Response highlights**:
+
+- `tab`: `tabId`, `windowId`, `url`, `title`, `status`, `active`, `index`
+- `screenshot`: `captured`, `mimeType`, `base64Data`, `base64Length`
+- `console`: `source`, `historyAvailable`, `messageCount`, `exceptionCount`, `runtimeExceptionSummary`
+- `network`: `available`, `backend`, `source`, `failedRequestCount`, `recentRequests[]`
 
 ### `search_tabs_content`
 
@@ -381,6 +632,78 @@ Examples:
 { "action": "left_click_drag", "startRef": "ref_10", "ref": "ref_15" }
 ````
 
+### `chrome_wait_for`
+
+Wait for a browser condition to become true without writing custom polling logic.
+
+**Top-level parameters**:
+
+- `tabId` / `windowId` / `frameId` (optional): choose the target tab or frame
+- `timeoutMs` (number, optional): overall timeout (default: 10000)
+- `pollIntervalMs` (number, optional): polling interval for URL/title/JS/exists waits (default: 200)
+- `includeStatic` (boolean, optional): only used for `condition.kind = "network"`
+- `condition` (object, required): unified condition descriptor
+
+**Supported `condition.kind` values**:
+
+- `element`: `{ kind, selector?, ref?, selectorType?, state }`, where `state` is `exists | visible | hidden | clickable`
+- `text`: `{ kind, text, present? }`
+- `url` / `title`: `{ kind, value?, match? }`, where `match` is `contains | equals | regex | changed`
+- `javascript`: `{ kind, predicate }`
+- `network`: `{ kind, urlPattern?, method?, status? }`
+- `networkIdle`: `{ kind, idleMs? }`
+- `download`: `{ kind, filenameContains?, waitForComplete? }`
+- `sleep`: `{ kind, durationMs }`
+
+**Examples**:
+
+```json
+{
+  "condition": {
+    "kind": "element",
+    "selector": "#submit",
+    "state": "visible"
+  },
+  "timeoutMs": 8000
+}
+```
+
+```json
+{
+  "condition": {
+    "kind": "url",
+    "value": "/dashboard",
+    "match": "contains"
+  }
+}
+```
+
+```json
+{
+  "condition": {
+    "kind": "javascript",
+    "predicate": "(() => window.appReady === true)"
+  }
+}
+```
+
+### `chrome_assert`
+
+Assert that a browser condition becomes true within the timeout. Uses the same `condition` schema as `chrome_wait_for`, but fails clearly when the condition is not met.
+
+**Example**:
+
+```json
+{
+  "condition": {
+    "kind": "title",
+    "value": "Checkout",
+    "match": "contains"
+  },
+  "timeoutMs": 5000
+}
+```
+
 ### `chrome_click_element`
 
 Click elements using a ref, selector, or coordinates.
@@ -441,6 +764,86 @@ Simulate keyboard input and shortcuts.
   "delay": 100
 }
 ```
+
+### `chrome_handle_download`
+
+Wait for a browser download, fetch the latest matching download status, or list recent downloads. The response now includes normalized `status`, raw Chrome `state`, the final file path, and size/progress fields.
+
+**Parameters**:
+
+- `action` (string, optional): `wait` (default), `status`, or `list`
+- `id` (number, optional): filter by Chrome download ID
+- `filenameContains` (string, optional): substring filter for filename, full path, URL, or final URL
+- `startedAfter` (number, optional): only include downloads started on/after this Unix timestamp in ms
+- `state` (string, optional): raw Chrome state: `in_progress | complete | interrupted`
+- `status` (string, optional): normalized state: `pending | in_progress | completed | failed`
+- `limit` (number, optional): for `action="list"`, maximum returned items (default: `20`)
+- `timeoutMs` / `waitForComplete` / `allowInterrupted` (optional): only used by `action="wait"`
+
+**Examples**:
+
+```json
+{
+  "action": "status",
+  "filenameContains": "invoice"
+}
+```
+
+```json
+{
+  "action": "list",
+  "status": "failed",
+  "limit": 10
+}
+```
+
+**Response highlights**:
+
+- `status`: normalized lifecycle (`pending`, `in_progress`, `completed`, `failed`)
+- `state` / `chromeState`: raw Chrome download state
+- `filename` / `fullPath`
+- `totalBytes`, `receivedBytes`, `progressPct`, `mimeType`, `exists`, `error`
+
+### `chrome_upload_file`
+
+Upload files into `input[type="file"]` and return a stable `uploadId` plus browser-side selection details.
+
+**Parameters**:
+
+- `selector` (string, required): target file input selector
+- `filePath` / `fileUrl` / `base64Data`: file source (provide one)
+- `fileName` (string, optional): name used when the source is `fileUrl` or `base64Data`
+- `tabId` / `windowId` (optional): choose the target tab
+
+**Response highlights**:
+
+- `uploadId`: session id for follow-up status checks
+- `status`: browser-side execution result (`completed` on success)
+- `selectedFiles`, `fileCount`, `inputState`
+- `startedAt`, `completedAt`
+
+### `chrome_get_upload_status`
+
+Get the latest browser-side status for a file upload attempt. You can look it up by `uploadId`, or inspect the current file input by selector.
+
+**Parameters**:
+
+- `uploadId` (string, optional): session id returned by `chrome_upload_file`
+- `selector` (string, optional): file input selector for a live re-check
+- `tabId` / `windowId` (optional): choose the target tab for live inspection
+
+**Example**:
+
+```json
+{
+  "uploadId": "upload_1714300000000_abcd1234"
+}
+```
+
+**Boundary**:
+
+- This confirms browser-side file selection state only.
+- It does **not** infer whether the website has already processed or uploaded the file to its backend unless the page itself exposes that state.
 
 ## 📚 Data Management
 

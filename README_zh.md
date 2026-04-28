@@ -197,12 +197,13 @@ mcp-chrome-community-bridge/dist/mcp/mcp-server-stdio.js
 </details>
 
 <details>
-<summary><strong>🔍 内容分析 (4个工具)</strong></summary>
+<summary><strong>🔍 内容分析 (5个工具)</strong></summary>
 
 - `search_tabs_content` - AI 驱动的浏览器标签页语义搜索
 - `chrome_get_web_content` - 从页面提取 HTML/文本内容
 - `chrome_get_interactive_elements` - 查找可点击元素
 - `chrome_console` - 捕获和获取浏览器标签页的控制台输出
+- `chrome_collect_debug_evidence` - 打包截图、console/runtime 报错和最近网络证据
 </details>
 
 <details>
@@ -317,12 +318,12 @@ https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
   - 关联问题：`#93`、`#200`、`#43`
   - 主要模块：`computer.ts`、`common.ts`、`download.ts`、`network-capture.ts`、`app/chrome-extension/entrypoints/background/record-replay/engine/policies/wait.ts`
 
-- [ ] `P1` 截图输出瘦身和局部截图优先
+- [x] `P1` 截图输出瘦身和局部截图优先
   - 优先解决截图太大、token 爆掉、还得手动保存这些问题
   - 关联问题：`#163`、`#207`
   - 主要模块：`screenshot.ts`、`packages/shared/src/tools.ts`、`app/chrome-extension/utils/image-utils.ts`
 
-- [ ] `P1` console / dialog / network 结果质量
+- [x] `P1` console / dialog / network 结果质量
   - 把 `chrome_console` 的深层对象、DevTools 冲突、弹窗信息读取、网络抓包结果做得更稳
   - 关联问题：`#215`、`#191`、`#201`
   - 主要模块：`console.ts`、`console-buffer.ts`、`dialog.ts`、`javascript.ts`、`network-capture.ts`
@@ -336,6 +337,76 @@ https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
   - 在现有 `chrome_computer`、`chrome_upload_file`、`chrome_handle_download`、`record_replay_flow_run` 基础上，继续补 `hover`、拖放、剪贴板、标签组、复杂表单和流程复用
   - 关联问题：`#141`、`#171`、`#205`
   - 主要模块：`computer.ts`、`file-upload.ts`、`download.ts`、`bookmark.ts`、`history.ts`、`app/chrome-extension/entrypoints/background/tools/record-replay.ts`
+
+### 2026-04-28 Agent 使用体验补强清单
+
+> 下面这些点里，有些底层能力已经存在，但从 Claude Code / Codex 这类 agent 的实际使用体验来看，还需要继续产品化、稳定化，而不是只停留在“能调用”。
+
+- [x] `P1` `chrome_network_capture` 生命周期与匹配规则稳定化
+  - 已观察到 `start` 成功但 `stop` 报无活动会话，或返回 `0 requests captured` 的情况；需要把 URL pattern、会话绑定、导航时序和结果回传做稳
+  - 优先补齐“等某个请求出现 / 完成”的 agent 友好语义，而不只是底层抓包入口
+  - 这轮补强后的实际行为：精确 `https://...` URL 会先绑定 capture 再导航，通配符 pattern 会附着到已有 tab，`includeStatic=false` 仍会保留 XHR/fetch 触发的 `text/html` 响应，只过滤顶层文档和静态资源
+  - 建议子任务：
+    1. 统一 URL pattern 规则，明确精确 URL、通配符、当前 tab 默认值的行为
+    2. 把 capture 生命周期绑定到 tab / frame / navigation，避免 `start` 后状态丢失
+    3. 返回更稳定的统计字段，如 matched requests、ignored requests、stop reason
+    4. 为 start → navigate → stop、连续 start/stop、超时 stop、无请求 stop 补回归测试
+  - 验收方向：在标准 `https` 页面上，`start` → 导航 → `stop` 能稳定拿到请求列表；不再出现随机“无活动会话”
+  - 主要模块：`network-capture.ts`、`common.ts`、`app/chrome-extension/utils/cdp-session-manager.ts`
+
+- [x] `P1` 等待 / 断言能力从底层策略升级为一等工具
+  - 现有等待能力更多分散在内部策略或复合工具里，仍建议补明确的 `wait_for` / `assert` 风格入口，覆盖元素出现、文本变化、URL 变化、网络空闲等高频条件
+  - 目标不是“理论上能通过 JS 拼出来”，而是让 agent 能稳定、低成本地使用
+  - 建议子任务：
+    1. 定义统一 condition schema：element、text、url、title、js predicate、network idle
+    2. 统一超时、轮询间隔、失败消息和调试上下文返回格式
+    3. 让 `chrome_computer`、录制回放、下载等待共用同一套等待内核
+    4. 为动态列表、懒加载、按钮启用状态、重定向页面补集成用例
+  - 验收方向：常见“等元素出现 / 等文本变化 / 等跳转完成”不再需要临时写 JS 或手动重试
+  - 主要模块：`computer.ts`、`common.ts`、`app/chrome-extension/entrypoints/background/record-replay/engine/policies/wait.ts`
+
+- [x] `P1` 元素查询与 DOM 可观测性补强
+  - `read_page` 已能解决大部分可见元素读取，但对批量元素查询、真实 DOM/属性、hidden 元素、局部 HTML 片段等场景还不够直接
+  - 可考虑补 `query_elements`、`get_element_html`、`get_dom_snapshot` 这类更结构化的工具
+  - 建议子任务：
+    1. 设计批量元素查询输出，至少包含 ref、selector hint、text、role、attributes、visible、enabled
+    2. 增加局部 DOM / outerHTML 读取，覆盖 hidden 元素和局部 subtree
+    3. 统一 `read_page` 与 DOM 查询工具的 ref 语义，减少跨工具 ref 失配
+    4. 为表格、列表、复杂表单、Shadow DOM 场景补回归样例
+  - 验收方向：agent 能稳定拿到“一个元素列表”或“某个节点的真实 DOM 片段”，而不是只能读整页摘要
+  - 主要模块：`read-page.ts`、`inject-scripts/accessibility-tree-helper.js`、`javascript.ts`
+
+- [x] `P1` 下载 / 上传闭环状态查询
+  - 现在已有下载、上传相关工具，但 agent 侧仍缺“是否完成、文件在哪、失败原因是什么”的稳定状态确认
+  - 重点补齐下载列表、最终保存路径、上传进度 / 失败原因等结果语义
+  - 建议子任务：
+    1. 补下载状态查询：pending / in_progress / completed / failed、文件名、路径、大小、mime type
+    2. 补上传状态查询：目标元素、开始时间、完成状态、失败原因
+    3. 明确浏览器原生弹窗、系统文件选择器、后台下载的兼容边界
+    4. 为单文件、多文件、重名文件、取消上传下载补测试覆盖
+  - 验收方向：agent 完成上传或下载后，能直接知道结果状态和文件去向，不需要靠猜测或额外脚本探测
+  - 主要模块：`download.ts`、`file-upload.ts`、`common.ts`
+
+- [x] `P2` iframe / 多标签页 / 多窗口的工作流级编排
+  - 当前基础能力已可用，但复杂工作流仍需要更明确的 frame 枚举 / 切换、标签页等待、新标签识别、跨窗口状态隔离能力
+  - 目标是降低 agent 在支付页、登录页、嵌入式编辑器、多步跳转场景中的不确定性
+  - 建议子任务：
+    1. 补 frame 枚举 / 切换工具，返回 frame 层级、URL、title、可交互状态
+    2. 补新标签等待、目标标签识别、标签关闭后的上下文恢复
+    3. 明确多窗口并发时的 active tab 选择和后台运行边界
+    4. 为 OAuth、支付页、内嵌编辑器、多步重定向场景补集成验证
+  - 验收方向：跨 iframe / 新标签 / 新窗口的多步流程能稳定跑通，不容易串到错误上下文
+  - 主要模块：`interaction.ts`、`computer.ts`、`app/native-server/src/mcp/mcp-server.ts`
+
+- [x] `P2` console / runtime error / 调试证据增强
+  - 除了能执行 JS，还需要更直接的 console logs、runtime errors、失败快照、关键上下文打包，方便 agent 自诊断页面异常
+  - 建议子任务：
+    1. 增加 recent logs、errors only、clear logs、runtime exception 摘要
+    2. 统一失败时的调试证据包：截图、URL、title、最近 console、关键请求摘要
+    3. 处理深对象序列化、循环引用、DevTools 冲突和输出截断问题
+    4. 为前端报错、资源加载失败、跨域异常补调试样例
+  - 验收方向：agent 遇到“页面没反应”时，可以直接拿到足够诊断证据，而不是只能再手写 JS 探查
+  - 主要模块：`console.ts`、`console-buffer.ts`、`javascript.ts`、`screenshot.ts`
 
 ### 中期方向
 

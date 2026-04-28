@@ -12,10 +12,22 @@
   const MAX_NODES = 4000; // hard limit to avoid long blocking on huge DOMs
   const MAX_LINE_LABEL = 100; // max characters for a single label in output
   const REF_MAP_LIMIT = 1000; // limit size of the ref map to keep payload small
+  const MAX_QUERY_RESULTS = 200;
+  const MAX_QUERY_SCAN_NODES = 12000;
+  const MAX_ATTRIBUTE_VALUE = 500;
+  const MAX_TEXT_VALUE = 500;
+  const MAX_HTML_VALUE = 200000;
 
   // Keep a weak map from ref id to elements
   if (!window.__claudeElementMap) window.__claudeElementMap = {};
   if (!window.__claudeRefCounter) window.__claudeRefCounter = 0;
+
+  function cssEscape(value) {
+    if (typeof CSS !== 'undefined' && CSS && typeof CSS.escape === 'function') {
+      return CSS.escape(value);
+    }
+    return String(value || '').replace(/["\\]/g, '\\$&');
+  }
 
   /**
    * Infer ARIA-like role from element
@@ -87,7 +99,9 @@
     const alt = el.getAttribute('alt');
     if (alt && alt.trim()) return alt.trim();
     if (/** @type {HTMLElement} */ (el).id) {
-      const lab = document.querySelector(`label[for="${/** @type {HTMLElement} */ (el).id}"]`);
+      const lab = document.querySelector(
+        `label[for="${cssEscape(/** @type {HTMLElement} */ (el).id)}"]`,
+      );
       if (lab && lab.textContent && lab.textContent.trim()) return lab.textContent.trim();
     }
     if (tag === 'input') {
@@ -488,13 +502,13 @@
   function generateSelector(el) {
     if (!(el instanceof Element)) return '';
     if (/** @type {HTMLElement} */ (el).id) {
-      const idSel = `#${CSS.escape(/** @type {HTMLElement} */ (el).id)}`;
+      const idSel = `#${cssEscape(/** @type {HTMLElement} */ (el).id)}`;
       if (document.querySelectorAll(idSel).length === 1) return idSel;
     }
     for (const attr of ['data-testid', 'data-cy', 'name']) {
       const attrValue = el.getAttribute(attr);
       if (attrValue) {
-        const s = `[${attr}="${CSS.escape(attrValue)}"]`;
+        const s = `[${attr}="${cssEscape(attrValue)}"]`;
         if (document.querySelectorAll(s).length === 1) return s;
       }
     }
@@ -516,6 +530,247 @@
       current = parent;
     }
     return path ? `body > ${path}` : 'body';
+  }
+
+  function getOrCreateRef(el) {
+    let refId = null;
+    for (const k in window.__claudeElementMap) {
+      if (window.__claudeElementMap[k].deref && window.__claudeElementMap[k].deref() === el) {
+        refId = k;
+        break;
+      }
+    }
+    if (!refId) {
+      refId = `ref_${++window.__claudeRefCounter}`;
+      window.__claudeElementMap[refId] = new WeakRef(el);
+    }
+    return refId;
+  }
+
+  function normalizeText(value, maxLength = MAX_TEXT_VALUE) {
+    const text = String(value || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return text.length > maxLength ? text.substring(0, maxLength) : text;
+  }
+
+  function isEnabled(el) {
+    try {
+      if (el.matches && el.matches(':disabled')) return false;
+    } catch (_) {}
+    return !(
+      el.hasAttribute('disabled') ||
+      el.getAttribute('aria-disabled') === 'true' ||
+      el.hasAttribute('inert')
+    );
+  }
+
+  function collectAttributes(el) {
+    const attributes = {};
+    const list = el && el.attributes ? Array.from(el.attributes) : [];
+    for (let i = 0; i < list.length; i++) {
+      const attr = list[i];
+      const value = String(attr.value || '');
+      attributes[attr.name] =
+        value.length > MAX_ATTRIBUTE_VALUE ? value.substring(0, MAX_ATTRIBUTE_VALUE) : value;
+    }
+    return attributes;
+  }
+
+  function getElementHtml(el, includeOuterHtml, maxLength) {
+    const raw = includeOuterHtml ? el.outerHTML : el.innerHTML;
+    const limit = Math.max(100, Math.min(Number(maxLength) || MAX_HTML_VALUE, MAX_HTML_VALUE));
+    const truncated = raw.length > limit;
+    return {
+      html: truncated ? raw.substring(0, limit) : raw,
+      htmlLength: raw.length,
+      truncated,
+    };
+  }
+
+  function summarizeDomElement(el, options = {}) {
+    const ref = getOrCreateRef(el);
+    const rect = /** @type {HTMLElement} */ (el).getBoundingClientRect();
+    const text = inferLabel(el) || normalizeText(el.textContent || '');
+    const summary = {
+      ref,
+      selectorHint: generateSelector(el),
+      text,
+      role: inferRole(el),
+      attributes: collectAttributes(el),
+      visible: isVisible(el),
+      enabled: isEnabled(el),
+      tagName: el.tagName.toLowerCase(),
+      center: {
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.top + rect.height / 2),
+      },
+    };
+    if (options.includeHtml) {
+      const htmlResult = getElementHtml(el, options.includeOuterHtml !== false, options.maxLength);
+      summary.html = htmlResult.html;
+      summary.htmlLength = htmlResult.htmlLength;
+      summary.truncated = htmlResult.truncated;
+    }
+    return summary;
+  }
+
+  function pushTraversalChildren(stack, node) {
+    try {
+      const children =
+        node instanceof ShadowRoot
+          ? Array.from(node.children || [])
+          : Array.from(/** @type {Element} */ (node).children || []);
+      for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
+    } catch (_) {}
+    try {
+      const sr = /** @type {any} */ (node).shadowRoot;
+      if (sr && sr.children) {
+        const shadowChildren = Array.from(sr.children);
+        for (let i = shadowChildren.length - 1; i >= 0; i--) stack.push(shadowChildren[i]);
+      }
+    } catch (_) {}
+  }
+
+  function getTraversalStartNodes(root) {
+    if (root instanceof Element) return [root];
+    if (root instanceof ShadowRoot) return Array.from(root.children || []);
+    if (root instanceof Document && root.documentElement) return [root.documentElement];
+    return [];
+  }
+
+  function collectCssMatches(selector, root, options = {}) {
+    if (!selector) {
+      return { elements: [], totalMatches: 0, truncated: false, error: 'selector is required' };
+    }
+
+    const includeHidden = options.includeHidden === true;
+    const limit = Math.max(
+      1,
+      Math.min(Number(options.limit) || MAX_QUERY_RESULTS, MAX_QUERY_RESULTS),
+    );
+    const elements = [];
+    let totalMatches = 0;
+    let truncated = false;
+    const visited = new Set();
+    const stack = getTraversalStartNodes(root);
+    let scanned = 0;
+
+    while (stack.length) {
+      const node = stack.pop();
+      if (!(node instanceof Element) || visited.has(node)) continue;
+      visited.add(node);
+
+      try {
+        if (node.matches(selector) && (includeHidden || isVisible(node))) {
+          totalMatches++;
+          if (elements.length < limit) elements.push(node);
+          else truncated = true;
+        }
+      } catch (e) {
+        return {
+          elements: [],
+          totalMatches: 0,
+          truncated: false,
+          error: `Invalid CSS selector "${selector}": ${e.message || e}`,
+        };
+      }
+
+      pushTraversalChildren(stack, node);
+      scanned++;
+      if (scanned >= MAX_QUERY_SCAN_NODES) {
+        if (stack.length > 0) truncated = true;
+        break;
+      }
+    }
+
+    return { elements, totalMatches, truncated };
+  }
+
+  function collectXPathMatches(selector, root, options = {}) {
+    if (!selector) {
+      return { elements: [], totalMatches: 0, truncated: false, error: 'selector is required' };
+    }
+    if (root instanceof ShadowRoot) {
+      return {
+        elements: [],
+        totalMatches: 0,
+        truncated: false,
+        error: 'XPath does not support shadow-root scoped queries',
+      };
+    }
+
+    const includeHidden = options.includeHidden === true;
+    const limit = Math.max(
+      1,
+      Math.min(Number(options.limit) || MAX_QUERY_RESULTS, MAX_QUERY_RESULTS),
+    );
+
+    try {
+      const snapshot = document.evaluate(
+        selector,
+        root || document,
+        null,
+        XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+        null,
+      );
+      const elements = [];
+      let totalMatches = 0;
+      for (let i = 0; i < snapshot.snapshotLength; i++) {
+        const node = snapshot.snapshotItem(i);
+        if (!(node instanceof Element)) continue;
+        if (!includeHidden && !isVisible(node)) continue;
+        totalMatches++;
+        if (elements.length < limit) elements.push(node);
+      }
+      return {
+        elements,
+        totalMatches,
+        truncated: totalMatches > limit,
+      };
+    } catch (e) {
+      return {
+        elements: [],
+        totalMatches: 0,
+        truncated: false,
+        error: `Invalid XPath "${selector}": ${e.message || e}`,
+      };
+    }
+  }
+
+  function resolveQueryRoot(refId) {
+    if (!refId) return document;
+    const el = resolveRef(String(refId || '').trim());
+    if (!el || !(el instanceof Element)) {
+      return { error: `ref "${String(refId || '').trim()}" not found or expired` };
+    }
+    return el;
+  }
+
+  function queryDomElements(selector, isXPath, options = {}) {
+    const root = resolveQueryRoot(options.refId);
+    if (root && root.error) return root;
+    return isXPath
+      ? collectXPathMatches(selector, root, options)
+      : collectCssMatches(selector, root, options);
+  }
+
+  function getSingleElement(selector, isXPath, options = {}) {
+    const result = queryDomElements(selector, isXPath, {
+      ...options,
+      includeHidden: true,
+      limit: 2,
+    });
+    if (result.error) return result;
+    if (result.totalMatches === 0) {
+      return { error: `selector not found: ${selector}` };
+    }
+    if (result.totalMatches > 1) {
+      return {
+        error: `Selector "${selector}" matched multiple elements. Please refine the selector to match only one element.`,
+      };
+    }
+    return { element: result.elements[0] || null };
   }
 
   /**
@@ -762,7 +1017,12 @@
   // Chrome message bridge for ping and tree generation
   chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     try {
-      if (request && request.action === 'chrome_read_page_ping') {
+      if (
+        request &&
+        (request.action === 'chrome_read_page_ping' ||
+          request.action === 'chrome_query_elements_ping' ||
+          request.action === 'chrome_get_element_html_ping')
+      ) {
         sendResponse({ status: 'pong' });
         return false;
       }
@@ -1042,6 +1302,75 @@
         }
         sendResponse({ success: true, ...result });
         return true;
+      }
+      if (request && request.action === 'queryElements') {
+        try {
+          const selector = String(request.selector || '').trim();
+          const result = queryDomElements(selector, !!request.isXPath, {
+            refId: request.refId,
+            includeHidden: request.includeHidden === true,
+            limit: request.limit,
+          });
+          if (result && result.error) {
+            sendResponse({ success: false, error: result.error });
+            return true;
+          }
+          const elements = Array.isArray(result.elements)
+            ? result.elements.map((el) => summarizeDomElement(el))
+            : [];
+          sendResponse({
+            success: true,
+            elements,
+            totalMatches: result.totalMatches || 0,
+            truncated: result.truncated === true,
+            refMap: elements.map((el) => ({ ref: el.ref })),
+          });
+          return true;
+        } catch (e) {
+          sendResponse({ success: false, error: String(e && e.message ? e.message : e) });
+          return true;
+        }
+      }
+      if (request && request.action === 'getElementHtml') {
+        try {
+          let el = null;
+          const ref = String(request.ref || '').trim();
+          const selector = String(request.selector || '').trim();
+          if (ref) {
+            el = resolveRef(ref);
+            if (!el || !(el instanceof Element)) {
+              sendResponse({ success: false, error: `ref "${ref}" not found or expired` });
+              return true;
+            }
+          } else {
+            const result = getSingleElement(selector, !!request.isXPath);
+            if (result && result.error) {
+              sendResponse({ success: false, error: result.error });
+              return true;
+            }
+            el = result.element;
+          }
+
+          if (!el || !(el instanceof Element)) {
+            sendResponse({ success: false, error: 'element not found' });
+            return true;
+          }
+
+          const element = summarizeDomElement(el, {
+            includeHtml: true,
+            includeOuterHtml: request.includeOuterHtml !== false,
+            maxLength: request.maxLength,
+          });
+          sendResponse({
+            success: true,
+            element,
+            refMap: [{ ref: element.ref }],
+          });
+          return true;
+        } catch (e) {
+          sendResponse({ success: false, error: String(e && e.message ? e.message : e) });
+          return true;
+        }
       }
       if (request && request.action === 'ensureRefForSelector') {
         try {

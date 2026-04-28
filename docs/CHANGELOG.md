@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.5] - 2026-04-28
+
+### Added
+
+- **Agent-first browser waits and orchestration**: added `chrome_wait_for`, `chrome_assert`, and `chrome_wait_for_tab` so agents can wait on element/text/URL/network/download conditions and newly opened tabs without ad-hoc JavaScript
+- **DOM / debug / transfer status tools**: added `chrome_query_elements`, `chrome_get_element_html`, `chrome_collect_debug_evidence`, `chrome_handle_download`, and `chrome_get_upload_status` for raw DOM reads, compact debugging bundles, and stable upload/download status checks
+
+### Fixed
+
+- **webRequest capture filtering**: `chrome_network_capture` now keeps same-page XHR/fetch responses even when they return `text/html`; `includeStatic=false` still filters top-level document/static responses instead of dropping agent-triggered fetches
+- **Network capture lifecycle**: exact URL capture now binds before first navigation, timeout/inactivity stops can be consumed later, and stop results now expose stable `matchedRequests`, `ignoredRequests`, and `stopReason` fields
+- **Screenshot output defaults**: inline screenshot responses now default to no-download mode and include `captureKind`, `mimeType`, and original/output dimensions for more reliable agent use
+
+### Documentation
+
+- **Tool behavior notes**: README and TOOLS docs now document exact URL vs wildcard capture rules, the refined `includeStatic` behavior, and the new wait / debug / transfer-status helper tools
+
 ## [v1.0.4] - 2026-04-27
 
 ### Fixed
