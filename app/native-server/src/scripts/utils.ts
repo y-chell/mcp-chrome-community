@@ -10,6 +10,89 @@ export const access = promisify(fs.access);
 export const mkdir = promisify(fs.mkdir);
 export const writeFile = promisify(fs.writeFile);
 
+function parseVersionFromDirName(dirName: string): number[] | null {
+  const cleaned = dirName.trim().replace(/^v/, '');
+  if (!/^\d+(\.\d+){0,3}$/.test(cleaned)) return null;
+  return cleaned.split('.').map((part) => Number(part));
+}
+
+function compareVersions(a: number[], b: number[]): number {
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const av = a[i] ?? 0;
+    const bv = b[i] ?? 0;
+    if (av !== bv) return av - bv;
+  }
+  return 0;
+}
+
+function pickLatestVersionDir(parentDir: string): string | null {
+  if (!fs.existsSync(parentDir)) return null;
+  const dirents = fs.readdirSync(parentDir, { withFileTypes: true });
+  let best: { name: string; version: number[] } | null = null;
+
+  for (const dirent of dirents) {
+    if (!dirent.isDirectory()) continue;
+    const parsed = parseVersionFromDirName(dirent.name);
+    if (!parsed) continue;
+    if (!best || compareVersions(parsed, best.version) > 0) {
+      best = { name: dirent.name, version: parsed };
+    }
+  }
+
+  return best ? path.join(parentDir, best.name) : null;
+}
+
+function resolveLatestFnmNodePath(): string | null {
+  const nodeFileName = process.platform === 'win32' ? 'node.exe' : 'node';
+  const fnmBaseCandidates = [
+    process.env.FNM_DIR,
+    process.platform === 'win32'
+      ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'fnm')
+      : null,
+    process.platform === 'win32'
+      ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'fnm')
+      : null,
+    path.join(os.homedir(), '.fnm'),
+  ].filter((value): value is string => Boolean(value));
+
+  for (const fnmBase of fnmBaseCandidates) {
+    const latestVersionDir = pickLatestVersionDir(path.join(fnmBase, 'node-versions'));
+    if (!latestVersionDir) continue;
+
+    const candidate =
+      process.platform === 'win32'
+        ? path.join(latestVersionDir, 'installation', nodeFileName)
+        : path.join(latestVersionDir, 'installation', 'bin', nodeFileName);
+
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+export function resolvePreferredNodeExecPath(nodeExecPath = process.execPath): string {
+  const trimmed = nodeExecPath.trim();
+  const normalized = trimmed.toLowerCase();
+  const isFnmMultishellPath = normalized.includes('fnm_multishells');
+
+  if (isFnmMultishellPath) {
+    const stableFnmNodePath = resolveLatestFnmNodePath();
+    if (stableFnmNodePath) return stableFnmNodePath;
+  }
+
+  if (trimmed && fs.existsSync(trimmed)) {
+    return trimmed;
+  }
+
+  const stableFnmNodePath = resolveLatestFnmNodePath();
+  if (stableFnmNodePath) return stableFnmNodePath;
+
+  return nodeExecPath;
+}
+
 /**
  * Get the log directory path for wrapper scripts.
  * Uses platform-appropriate user directories to avoid permission issues.
@@ -135,10 +218,11 @@ export async function getMainPath(): Promise<string> {
 export function writeNodePathFile(distDir: string, nodeExecPath = process.execPath): void {
   try {
     const nodePathFile = path.join(distDir, 'node_path.txt');
+    const resolvedNodeExecPath = resolvePreferredNodeExecPath(nodeExecPath);
     fs.mkdirSync(distDir, { recursive: true });
 
-    console.log(colorText(`Writing Node.js path: ${nodeExecPath}`, 'blue'));
-    fs.writeFileSync(nodePathFile, nodeExecPath, 'utf8');
+    console.log(colorText(`Writing Node.js path: ${resolvedNodeExecPath}`, 'blue'));
+    fs.writeFileSync(nodePathFile, resolvedNodeExecPath, 'utf8');
     console.log(colorText('✓ Node.js path written for run_host scripts', 'green'));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
