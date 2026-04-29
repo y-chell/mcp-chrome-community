@@ -335,8 +335,9 @@ https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
   - 关联问题：`#152`、`#178`、`#162`、`#141`
   - 主要模块：`app/native-server/src/mcp/mcp-server.ts`、`mcp-server-stdio.ts`、`app/chrome-extension/entrypoints/background/native-host.ts`、`computer.ts`、`common.ts`、`app/chrome-extension/utils/cdp-session-manager.ts`
 
-- [ ] `P2` 更强的页面操作能力
+- [x] `P2` 更强的页面操作能力
   - 在现有 `chrome_computer`、`chrome_upload_file`、`chrome_handle_download`、`record_replay_flow_run` 基础上，继续补 `hover`、拖放、剪贴板、标签组、复杂表单和流程复用
+  - 这轮补完后的实际行为：`chrome_clipboard` 支持读取、写入、粘贴、复制选中文本；`chrome_tab_group` 可以管理 Chrome 标签组；`chrome_computer` 支持按 selector 拖拽并插入中间移动点；`fill_form` 支持 ref / selector 混合填写并返回每个字段的结果
   - 关联问题：`#141`、`#171`、`#205`
   - 主要模块：`computer.ts`、`file-upload.ts`、`download.ts`、`bookmark.ts`、`history.ts`、`app/chrome-extension/entrypoints/background/tools/record-replay.ts`
 

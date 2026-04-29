@@ -100,6 +100,9 @@ export const OFFSCREEN_MESSAGE_TYPES = {
   GIF_ADD_FRAME: 'gifAddFrame',
   GIF_FINISH: 'gifFinish',
   GIF_RESET: 'gifReset',
+  // Clipboard operations through the offscreen document
+  CLIPBOARD_READ_TEXT: 'clipboardReadText',
+  CLIPBOARD_WRITE_TEXT: 'clipboardWriteText',
 } as const;
 
 // Content script message types

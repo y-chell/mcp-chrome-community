@@ -49,6 +49,7 @@ type MessageResponse = {
   result?: string;
   error?: string;
   success?: boolean;
+  text?: string;
   similarities?: number[];
   embedding?: number[];
   embeddings?: number[][];
@@ -133,6 +134,23 @@ chrome.runtime.onMessage.addListener(
           handleGetEngineStatus()
             .then((status: any) => sendResponse({ success: true, ...status }))
             .catch((error: any) => sendResponse({ success: false, error: error.message }));
+          break;
+        }
+
+        case OFFSCREEN_MESSAGE_TYPES.CLIPBOARD_READ_TEXT: {
+          navigator.clipboard
+            .readText()
+            .then((text) => sendResponse({ success: true, text }))
+            .catch((error) => sendResponse({ success: false, error: error.message }));
+          break;
+        }
+
+        case OFFSCREEN_MESSAGE_TYPES.CLIPBOARD_WRITE_TEXT: {
+          const text = String((message as any).text ?? '');
+          navigator.clipboard
+            .writeText(text)
+            .then(() => sendResponse({ success: true }))
+            .catch((error) => sendResponse({ success: false, error: error.message }));
           break;
         }
 

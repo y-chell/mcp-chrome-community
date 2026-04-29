@@ -341,8 +341,9 @@ The next community-fork milestone is not "add as many tools as possible". The pr
   - Related issues: `#152`, `#178`, `#162`, `#141`
   - Primary modules: `app/native-server/src/mcp/mcp-server.ts`, `mcp-server-stdio.ts`, `app/chrome-extension/entrypoints/background/native-host.ts`, `computer.ts`, `common.ts`, `app/chrome-extension/utils/cdp-session-manager.ts`
 
-- [ ] `P2` Expand high-value page operations
+- [x] `P2` Expand high-value page operations
   - Build on top of `chrome_computer`, `chrome_upload_file`, `chrome_handle_download`, and `record_replay_flow_run` to improve `hover`, drag/drop, clipboard actions, tab groups, complex forms, and reusable flows
+  - Current behavior after the expansion pass: `chrome_clipboard` supports read/write/paste/copy-selection text operations, `chrome_tab_group` manages Chrome tab groups, `chrome_computer` can drag by selector with interpolated mouse moves, and `fill_form` accepts mixed ref/selector targets with per-field results
   - Related issues: `#141`, `#171`, `#205`
   - Primary modules: `computer.ts`, `file-upload.ts`, `download.ts`, `bookmark.ts`, `history.ts`, `app/chrome-extension/entrypoints/background/tools/record-replay.ts`
 

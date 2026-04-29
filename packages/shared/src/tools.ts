@@ -9,6 +9,7 @@ export const TOOL_NAMES = {
     SCREENSHOT: 'chrome_screenshot',
     CLOSE_TABS: 'chrome_close_tabs',
     SWITCH_TAB: 'chrome_switch_tab',
+    TAB_GROUP: 'chrome_tab_group',
     WEB_FETCHER: 'chrome_get_web_content',
     CLICK: 'chrome_click_element',
     FILL: 'chrome_fill_or_select',
@@ -37,6 +38,7 @@ export const TOOL_NAMES = {
     QUERY_ELEMENTS: 'chrome_query_elements',
     GET_ELEMENT_HTML: 'chrome_get_element_html',
     COMPUTER: 'chrome_computer',
+    CLIPBOARD: 'chrome_clipboard',
     WAIT_FOR_TAB: 'chrome_wait_for_tab',
     WAIT_FOR: 'chrome_wait_for',
     ASSERT: 'chrome_assert',
@@ -361,6 +363,24 @@ export const TOOL_SCHEMAS: Tool[] = [
           type: 'string',
           description: 'Drag start ref from chrome_read_page (alternative to startCoordinates).',
         },
+        startSelector: {
+          type: 'string',
+          description: 'CSS/XPath selector for the drag start element.',
+        },
+        endSelector: {
+          type: 'string',
+          description:
+            'CSS/XPath selector for the drag end element. If omitted, selector is treated as the end selector.',
+        },
+        dragSteps: {
+          type: 'number',
+          description: 'For action=left_click_drag: number of intermediate mouse moves (2-60).',
+        },
+        dragDurationMs: {
+          type: 'number',
+          description:
+            'For action=left_click_drag: total time spent moving between points in milliseconds (0-5000).',
+        },
         scrollDirection: {
           type: 'string',
           description: 'Scroll direction: up | down | left | right',
@@ -414,15 +434,30 @@ export const TOOL_SCHEMAS: Tool[] = [
         },
         elements: {
           type: 'array',
-          description: 'For action=fill_form: list of elements to fill (ref + value)',
+          description:
+            'For action=fill_form: list of elements to fill. Each item may use ref or selector.',
           items: {
             type: 'object',
             properties: {
               ref: { type: 'string', description: 'Element ref from chrome_read_page' },
-              value: { type: 'string', description: 'Value to set (stringified if non-string)' },
+              selector: { type: 'string', description: 'CSS/XPath selector for this field' },
+              selectorType: {
+                type: 'string',
+                enum: ['css', 'xpath'],
+                description: 'Selector syntax for this field (default: css)',
+              },
+              frameId: { type: 'number', description: 'Optional target frame ID' },
+              value: {
+                oneOf: [{ type: 'string' }, { type: 'boolean' }, { type: 'number' }],
+                description: 'Value to set',
+              },
             },
-            required: ['ref', 'value'],
+            required: ['value'],
           },
+        },
+        continueOnError: {
+          type: 'boolean',
+          description: 'For action=fill_form: continue filling remaining fields after an error.',
         },
         width: { type: 'number', description: 'For action=resize_page: viewport width' },
         height: { type: 'number', description: 'For action=resize_page: viewport height' },
@@ -483,6 +518,53 @@ export const TOOL_SCHEMAS: Tool[] = [
         duration: {
           type: 'number',
           description: 'Seconds to wait for action=wait (max 30s)',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.CLIPBOARD,
+    description:
+      'Read, write, copy, or paste text through the browser clipboard/page. Useful for paste-only fields, rich editors, and copying selected page text.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['read_text', 'write_text', 'paste_text', 'copy_selection'],
+          description:
+            'read_text reads the clipboard, write_text writes text, paste_text inserts text into a page target, copy_selection copies selected/target text.',
+        },
+        text: {
+          type: 'string',
+          description:
+            'Text for write_text or paste_text. paste_text reads clipboard when omitted.',
+        },
+        ref: {
+          type: 'string',
+          description: 'Element ref from chrome_read_page for paste_text/copy_selection target.',
+        },
+        selector: {
+          type: 'string',
+          description: 'CSS/XPath selector for paste_text/copy_selection target.',
+        },
+        selectorType: {
+          type: 'string',
+          enum: ['css', 'xpath'],
+          description: 'Selector syntax (default: css).',
+        },
+        tabId: {
+          type: 'number',
+          description: 'Target tab ID for page-aware copy/paste (default: active tab).',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+        frameId: {
+          type: 'number',
+          description: 'Target frame ID for page-aware copy/paste.',
         },
       },
       required: ['action'],
@@ -951,6 +1033,53 @@ export const TOOL_SCHEMAS: Tool[] = [
         },
       },
       required: ['tabId'],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.TAB_GROUP,
+    description:
+      'Manage Chrome tab groups. Use it to group related tabs, rename/color groups, collapse groups, list groups, move groups, or ungroup tabs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['list', 'create', 'update', 'move', 'ungroup'],
+          description:
+            'list returns groups and their tabs; create groups tabIds; update changes title/color/collapsed; move reorders a group; ungroup removes tabs from a group.',
+        },
+        tabIds: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Tab IDs for create or ungroup.',
+        },
+        groupId: {
+          type: 'number',
+          description: 'Chrome tab group ID for update/move/ungroup, or to filter list.',
+        },
+        title: {
+          type: 'string',
+          description: 'Group title for create/update.',
+        },
+        color: {
+          type: 'string',
+          enum: ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'],
+          description: 'Group color for create/update.',
+        },
+        collapsed: {
+          type: 'boolean',
+          description: 'Whether the group is collapsed for create/update.',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Window ID for list/create/move.',
+        },
+        index: {
+          type: 'number',
+          description: 'Target group index for move.',
+        },
+      },
+      required: ['action'],
     },
   },
   {

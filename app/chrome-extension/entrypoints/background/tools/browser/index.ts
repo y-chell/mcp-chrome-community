@@ -1,4 +1,5 @@
 export { navigateTool, closeTabsTool, switchTabTool } from './common';
+export { tabGroupTool } from './tab-group';
 export { windowTool } from './window';
 export { listFramesTool, waitForTabTool } from './tab-orchestration';
 export { screenshotTool } from './screenshot';
@@ -21,6 +22,7 @@ export { fileUploadTool, uploadStatusTool } from './file-upload';
 export { readPageTool } from './read-page';
 export { queryElementsTool, getElementHtmlTool } from './dom-query';
 export { computerTool } from './computer';
+export { clipboardTool } from './clipboard';
 export { waitForTool, assertTool } from './wait-for';
 export { handleDialogTool } from './dialog';
 export { handleDownloadTool } from './download';

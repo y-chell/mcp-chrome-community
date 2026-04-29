@@ -62,6 +62,10 @@ interface ComputerParams {
   // Optional element refs (from chrome_read_page) as alternative to coordinates
   ref?: string; // click target or drag end
   startRef?: string; // drag start
+  startSelector?: string; // drag start selector
+  endSelector?: string; // drag end selector
+  dragSteps?: number;
+  dragDurationMs?: number;
   scrollDirection?: 'up' | 'down' | 'left' | 'right';
   scrollAmount?: number;
   text?: string; // for type/key
@@ -89,6 +93,7 @@ interface ComputerParams {
   tabId?: number; // target existing tab id
   windowId?: number;
   background?: boolean; // avoid focusing/activating
+  continueOnError?: boolean; // for fill_form
 }
 
 // Minimal CDP helper encapsulated here to avoid scattering CDP code
@@ -1136,10 +1141,15 @@ class ComputerTool extends BaseBrowserToolExecutor {
         }
       }
       case 'left_click_drag': {
-        if (!params.startCoordinates && !params.startRef)
-          return createErrorResponse('Provide startRef or startCoordinates for drag');
-        if (!params.coordinates && !params.ref)
-          return createErrorResponse('Provide ref or end coordinates for drag');
+        const endSelector = params.endSelector || params.selector;
+        if (!params.startCoordinates && !params.startRef && !params.startSelector)
+          return createErrorResponse(
+            'Provide startRef, startSelector, or startCoordinates for drag',
+          );
+        if (!params.coordinates && !params.ref && !endSelector)
+          return createErrorResponse(
+            'Provide ref, selector, endSelector, or end coordinates for drag',
+          );
         let start = params.startCoordinates
           ? project(params.startCoordinates)!
           : (undefined as any);
@@ -1166,7 +1176,7 @@ class ComputerTool extends BaseBrowserToolExecutor {
           })();
           if (stale) return stale;
         }
-        if (params.startRef || params.ref) {
+        if (params.startRef || params.ref || params.startSelector || endSelector) {
           await this.injectContentScript(
             tab.id,
             ['inject-scripts/accessibility-tree-helper.js'],
@@ -1187,6 +1197,23 @@ class ComputerTool extends BaseBrowserToolExecutor {
             // ignore
           }
         }
+        if (params.startSelector) {
+          try {
+            const ensured = await this.sendMessageToTab(
+              tab.id,
+              {
+                action: TOOL_MESSAGE_TYPES.ENSURE_REF_FOR_SELECTOR,
+                selector: params.startSelector,
+                isXPath: params.selectorType === 'xpath',
+              },
+              params.frameId,
+            );
+            if (ensured && ensured.success)
+              start = project({ x: ensured.center.x, y: ensured.center.y })!;
+          } catch {
+            // ignore
+          }
+        }
         if (params.ref) {
           try {
             const resolved = await this.sendMessageToTab(tab.id, {
@@ -1199,8 +1226,37 @@ class ComputerTool extends BaseBrowserToolExecutor {
             // ignore
           }
         }
+        if (!params.ref && endSelector) {
+          try {
+            const ensured = await this.sendMessageToTab(
+              tab.id,
+              {
+                action: TOOL_MESSAGE_TYPES.ENSURE_REF_FOR_SELECTOR,
+                selector: endSelector,
+                isXPath: params.selectorType === 'xpath',
+              },
+              params.frameId,
+            );
+            if (ensured && ensured.success)
+              end = project({ x: ensured.center.x, y: ensured.center.y })!;
+          } catch {
+            // ignore
+          }
+        }
         if (!start || !end) return createErrorResponse('Failed to resolve drag coordinates');
         try {
+          const dragSteps = Math.max(
+            2,
+            Math.min(Number.isFinite(Number(params.dragSteps)) ? Number(params.dragSteps) : 8, 60),
+          );
+          const dragDurationMs = Math.max(
+            0,
+            Math.min(
+              Number.isFinite(Number(params.dragDurationMs)) ? Number(params.dragDurationMs) : 250,
+              5000,
+            ),
+          );
+          const stepDelayMs = dragSteps > 1 ? Math.floor(dragDurationMs / dragSteps) : 0;
           await CDPHelper.attach(tab.id);
           await CDPHelper.dispatchMouseEvent(tab.id, {
             type: 'mouseMoved',
@@ -1217,13 +1273,17 @@ class ComputerTool extends BaseBrowserToolExecutor {
             buttons: 1,
             clickCount: 1,
           });
-          await CDPHelper.dispatchMouseEvent(tab.id, {
-            type: 'mouseMoved',
-            x: end.x,
-            y: end.y,
-            button: 'left',
-            buttons: 1,
-          });
+          for (let i = 1; i <= dragSteps; i++) {
+            const progress = i / dragSteps;
+            await CDPHelper.dispatchMouseEvent(tab.id, {
+              type: 'mouseMoved',
+              x: start.x + (end.x - start.x) * progress,
+              y: start.y + (end.y - start.y) * progress,
+              button: 'left',
+              buttons: 1,
+            });
+            if (stepDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, stepDelayMs));
+          }
           await CDPHelper.dispatchMouseEvent(tab.id, {
             type: 'mouseReleased',
             x: end.x,
@@ -1237,7 +1297,14 @@ class ComputerTool extends BaseBrowserToolExecutor {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify({ success: true, action: 'left_click_drag', start, end }),
+                text: JSON.stringify({
+                  success: true,
+                  action: 'left_click_drag',
+                  start,
+                  end,
+                  dragSteps,
+                  dragDurationMs,
+                }),
               },
             ],
             isError: false,
@@ -1380,40 +1447,69 @@ class ComputerTool extends BaseBrowserToolExecutor {
         }
         // Reuse existing fill tool to leverage robust DOM event behavior
         const res = await fillTool.execute({
+          tabId: tab.id,
           selector: params.selector as any,
           selectorType: params.selectorType as any,
           ref: params.ref as any,
+          frameId: params.frameId as any,
           value: params.value as any,
         } as any);
         return res;
       }
       case 'fill_form': {
         const elements = (params as any).elements as Array<{
-          ref: string;
+          ref?: string;
+          selector?: string;
+          selectorType?: 'css' | 'xpath';
+          frameId?: number;
           value: string | number | boolean;
         }>;
         if (!Array.isArray(elements) || elements.length === 0) {
           return createErrorResponse('elements must be a non-empty array for fill_form');
         }
-        const results: Array<{ ref: string; ok: boolean; error?: string }> = [];
+        const continueOnError = params.continueOnError !== false;
+        const results: Array<{
+          ref?: string;
+          selector?: string;
+          frameId?: number;
+          ok: boolean;
+          error?: string;
+        }> = [];
         for (const item of elements) {
-          if (!item || !item.ref) {
-            results.push({ ref: String(item?.ref || ''), ok: false, error: 'missing ref' });
+          if (!item || (!item.ref && !item.selector)) {
+            const failed = { ok: false, error: 'missing ref or selector' };
+            results.push(failed);
+            if (!continueOnError) break;
             continue;
           }
           try {
             const r = await fillTool.execute({
+              tabId: tab.id,
               ref: item.ref as any,
+              selector: item.selector as any,
+              selectorType: item.selectorType || params.selectorType,
+              frameId: item.frameId ?? params.frameId,
               value: item.value as any,
             } as any);
             const ok = !r.isError;
-            results.push({ ref: item.ref, ok, error: ok ? undefined : 'failed' });
+            const errorText = r.content?.[0]?.text || 'failed';
+            results.push({
+              ref: item.ref,
+              selector: item.selector,
+              frameId: item.frameId ?? params.frameId,
+              ok,
+              error: ok ? undefined : errorText,
+            });
+            if (!ok && !continueOnError) break;
           } catch (e) {
             results.push({
               ref: item.ref,
+              selector: item.selector,
+              frameId: item.frameId ?? params.frameId,
               ok: false,
               error: String(e instanceof Error ? e.message : e),
             });
+            if (!continueOnError) break;
           }
         }
         const successCount = results.filter((r) => r.ok).length;
@@ -1426,6 +1522,7 @@ class ComputerTool extends BaseBrowserToolExecutor {
                 action: 'fill_form',
                 filled: successCount,
                 total: results.length,
+                attempted: elements.length,
                 results,
               }),
             },

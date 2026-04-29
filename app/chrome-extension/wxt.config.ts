@@ -133,6 +133,7 @@ export default defineConfig({
     permissions: [
       'nativeMessaging',
       'tabs',
+      'tabGroups',
       'activeTab',
       'scripting',
       'contextMenus',
@@ -144,6 +145,8 @@ export default defineConfig({
       'bookmarks',
       'offscreen',
       'storage',
+      'clipboardRead',
+      'clipboardWrite',
       'declarativeNetRequest',
       'alarms',
       // Allow programmatic control of Chrome Side Panel

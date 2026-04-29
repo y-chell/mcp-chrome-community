@@ -59,8 +59,9 @@ export class OffscreenManager {
 
       await chrome.offscreen.createDocument({
         url: 'offscreen.html',
-        reasons: ['WORKERS'],
-        justification: 'Need to run semantic similarity engine with workers',
+        reasons: ['WORKERS', 'CLIPBOARD'],
+        justification:
+          'Need workers for semantic search/GIF encoding and clipboard access for page operations',
       });
 
       this.isCreated = true;
@@ -103,6 +104,5 @@ export class OffscreenManager {
     this.createPromise = null;
   }
 }
-
 
 export const offscreenManager = OffscreenManager.getInstance();

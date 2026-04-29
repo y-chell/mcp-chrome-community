@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.7] - 2026-04-29
+
+### Added
+
+- **High-value page operations**: added `chrome_clipboard` for text read/write/paste/copy-selection flows and `chrome_tab_group` for listing, creating, updating, moving, and ungrouping Chrome tab groups
+- **Drag and complex form ergonomics**: `chrome_computer` now supports selector-based drag start/end points with interpolated mouse moves, and `fill_form` accepts mixed ref/selector targets with per-field results
+
 ## [v1.0.6] - 2026-04-29
 
 ### Changed
