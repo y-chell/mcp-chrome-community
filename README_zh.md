@@ -328,8 +328,10 @@ https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
   - 关联问题：`#215`、`#191`、`#201`
   - 主要模块：`console.ts`、`console-buffer.ts`、`dialog.ts`、`javascript.ts`、`network-capture.ts`
 
-- [ ] `P1` 多会话 / 多窗口 / 后台运行隔离
+- [x] `P1` 多会话 / 多窗口 / 后台运行隔离
   - 降低并发串线、窗口抢焦点、工具失控这类问题
+  - 这轮补强后的实际行为：每个 Streamable HTTP / SSE MCP 会话都会把会话上下文传到扩展侧；调用方不传 `tabId` / `windowId` 时，页签类工具会复用该会话上一次确认过的 tab/window；同一会话或同一 tab 的调用会排队，避免互相插队执行
+  - CDP debugger owner 现在会正确统计同一 owner 的重复 attach，并在 Chrome 主动 detach 时清理过期状态
   - 关联问题：`#152`、`#178`、`#162`、`#141`
   - 主要模块：`app/native-server/src/mcp/mcp-server.ts`、`mcp-server-stdio.ts`、`app/chrome-extension/entrypoints/background/native-host.ts`、`computer.ts`、`common.ts`、`app/chrome-extension/utils/cdp-session-manager.ts`
 

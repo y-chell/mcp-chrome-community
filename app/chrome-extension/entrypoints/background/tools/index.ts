@@ -3,6 +3,10 @@ import { ERROR_MESSAGES } from '@/common/constants';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 import * as browserTools from './browser';
 import { flowRunTool, listPublishedFlowsTool } from './record-replay';
+import {
+  runBrowserToolCallWithIsolation,
+  type BrowserToolCallContext,
+} from './browser-session-context';
 
 type ToolExecutor = {
   name: string;
@@ -48,6 +52,7 @@ async function resolveTool(name: string): Promise<ToolExecutor | undefined> {
 export interface ToolCallParam {
   name: string;
   args: any;
+  context?: BrowserToolCallContext;
 }
 
 /**
@@ -60,7 +65,9 @@ export const handleCallTool = async (param: ToolCallParam) => {
   }
 
   try {
-    return await tool.execute(param.args);
+    return await runBrowserToolCallWithIsolation(param.name, param.args, param.context, (args) =>
+      tool.execute(args),
+    );
   } catch (error) {
     console.error(`Tool execution failed for ${param.name}:`, error);
     return createErrorResponse(

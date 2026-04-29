@@ -7,6 +7,11 @@ import {
 import nativeMessagingHostInstance from '../native-messaging-host';
 import { NativeMessageType, TOOL_SCHEMAS } from 'chrome-mcp-shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type { McpServerContext } from './mcp-server';
+
+type ToolCallContext = McpServerContext & {
+  requestId?: string;
+};
 
 async function listDynamicFlowTools(): Promise<Tool[]> {
   try {
@@ -66,7 +71,21 @@ async function listDynamicFlowTools(): Promise<Tool[]> {
   }
 }
 
-export const setupTools = (server: Server) => {
+function buildToolCallContext(
+  baseContext: McpServerContext,
+  extra: { sessionId?: string; requestId?: string | number },
+): ToolCallContext {
+  return {
+    ...baseContext,
+    sessionId: extra.sessionId || baseContext.sessionId,
+    requestId:
+      typeof extra.requestId === 'string' || typeof extra.requestId === 'number'
+        ? String(extra.requestId)
+        : undefined,
+  };
+}
+
+export const setupTools = (server: Server, context: McpServerContext = {}) => {
   // List tools handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const dynamicTools = await listDynamicFlowTools();
@@ -74,12 +93,20 @@ export const setupTools = (server: Server) => {
   });
 
   // Call tool handler
-  server.setRequestHandler(CallToolRequestSchema, async (request) =>
-    handleToolCall(request.params.name, request.params.arguments || {}),
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) =>
+    handleToolCall(
+      request.params.name,
+      request.params.arguments || {},
+      buildToolCallContext(context, extra),
+    ),
   );
 };
 
-const handleToolCall = async (name: string, args: any): Promise<CallToolResult> => {
+const handleToolCall = async (
+  name: string,
+  args: any,
+  context: ToolCallContext,
+): Promise<CallToolResult> => {
   try {
     // If calling a dynamic flow tool (name starts with flow.), proxy to common flow-run tool
     if (name && name.startsWith('flow.')) {
@@ -96,7 +123,7 @@ const handleToolCall = async (name: string, args: any): Promise<CallToolResult> 
         if (!match) throw new Error(`Flow not found for tool ${name}`);
         const flowArgs = { flowId: match.id, args };
         const proxyRes = await nativeMessagingHostInstance.sendRequestToExtensionAndWait(
-          { name: 'record_replay_flow_run', args: flowArgs },
+          { name: 'record_replay_flow_run', args: flowArgs, context },
           NativeMessageType.CALL_TOOL,
           120000,
         );
@@ -122,6 +149,7 @@ const handleToolCall = async (name: string, args: any): Promise<CallToolResult> 
       {
         name,
         args,
+        context,
       },
       NativeMessageType.CALL_TOOL,
       120000, // 延长到 120 秒，避免性能分析等长任务超时

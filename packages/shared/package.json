@@ -1,6 +1,6 @@
 {
   "name": "chrome-mcp-shared",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "author": "mcp-chrome-community",
   "main": "dist/index.js",
   "module": "./dist/index.mjs",

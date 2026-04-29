@@ -4,7 +4,7 @@ type OwnerTag = string;
 
 interface TabSessionState {
   refCount: number;
-  owners: Set<OwnerTag>;
+  owners: Map<OwnerTag, number>;
   attachedByUs: boolean;
 }
 
@@ -12,6 +12,14 @@ const DEBUGGER_PROTOCOL_VERSION = '1.3';
 
 class CDPSessionManager {
   private sessions = new Map<number, TabSessionState>();
+
+  constructor() {
+    chrome.debugger?.onDetach?.addListener?.((source) => {
+      if (typeof source.tabId === 'number') {
+        this.sessions.delete(source.tabId);
+      }
+    });
+  }
 
   private getState(tabId: number): TabSessionState | undefined {
     return this.sessions.get(tabId);
@@ -21,11 +29,24 @@ class CDPSessionManager {
     this.sessions.set(tabId, state);
   }
 
+  private addOwner(state: TabSessionState, owner: OwnerTag): void {
+    state.refCount += 1;
+    state.owners.set(owner, (state.owners.get(owner) || 0) + 1);
+  }
+
+  private removeOwner(state: TabSessionState, owner: OwnerTag): boolean {
+    const ownerCount = state.owners.get(owner) || 0;
+    if (ownerCount <= 0) return false;
+    if (ownerCount === 1) state.owners.delete(owner);
+    else state.owners.set(owner, ownerCount - 1);
+    state.refCount = Math.max(0, state.refCount - 1);
+    return true;
+  }
+
   async attach(tabId: number, owner: OwnerTag = 'unknown'): Promise<void> {
     const state = this.getState(tabId);
     if (state && state.attachedByUs) {
-      state.refCount += 1;
-      state.owners.add(owner);
+      this.addOwner(state, owner);
       return;
     }
 
@@ -37,7 +58,7 @@ class CDPSessionManager {
         // Already attached by us (e.g., previous tool). Adopt and refcount.
         this.setState(tabId, {
           refCount: state ? state.refCount + 1 : 1,
-          owners: new Set([...(state?.owners || []), owner]),
+          owners: new Map([...(state?.owners || new Map()), [owner, 1]]),
           attachedByUs: true,
         });
         return;
@@ -50,7 +71,11 @@ class CDPSessionManager {
 
     // Attach freshly
     await chrome.debugger.attach({ tabId }, DEBUGGER_PROTOCOL_VERSION);
-    this.setState(tabId, { refCount: 1, owners: new Set([owner]), attachedByUs: true });
+    this.setState(tabId, {
+      refCount: 1,
+      owners: new Map([[owner, 1]]),
+      attachedByUs: true,
+    });
   }
 
   async detach(tabId: number, owner: OwnerTag = 'unknown'): Promise<void> {
@@ -58,8 +83,11 @@ class CDPSessionManager {
     if (!state) return; // Nothing to do
 
     // Update ownership/refcount
-    if (state.owners.has(owner)) state.owners.delete(owner);
-    state.refCount = Math.max(0, state.refCount - 1);
+    const removed = this.removeOwner(state, owner);
+    if (!removed) {
+      // Avoid detaching another concurrent owner when the caller does not own this session.
+      return;
+    }
 
     if (state.refCount > 0) {
       // Still in use by other owners

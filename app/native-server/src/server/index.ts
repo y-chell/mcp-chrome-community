@@ -205,7 +205,10 @@ export class Server {
           this.transportsMap.delete(transport.sessionId);
         });
 
-        const server = createMcpServer();
+        const server = createMcpServer({
+          sessionId: transport.sessionId,
+          transport: 'sse',
+        });
         await server.connect(transport);
       } catch (error) {
         this.sendRawText(
@@ -262,7 +265,10 @@ export class Server {
             this.transportsMap.delete(transport.sessionId);
           }
         };
-        await createMcpServer().connect(transport);
+        await createMcpServer({
+          sessionId: newSessionId,
+          transport: 'streamable-http',
+        }).connect(transport);
       } else {
         reply.code(HTTP_STATUS.BAD_REQUEST).send({ error: ERROR_MESSAGES.INVALID_MCP_REQUEST });
         return;

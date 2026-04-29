@@ -334,8 +334,10 @@ The next community-fork milestone is not "add as many tools as possible". The pr
   - Related issues: `#215`, `#191`, `#201`
   - Primary modules: `console.ts`, `console-buffer.ts`, `dialog.ts`, `javascript.ts`, `network-capture.ts`
 
-- [ ] `P1` Tighten multi-session / multi-window / background-run isolation
+- [x] `P1` Tighten multi-session / multi-window / background-run isolation
   - Reduce cross-session interference, focus stealing, and rogue tool behavior under concurrency
+  - Current behavior after the hardening pass: each Streamable HTTP / SSE MCP session carries a session context into the extension, tab-scoped tools reuse the session's last known tab/window when the caller omits `tabId` / `windowId`, and same-session or same-tab calls are queued instead of interleaving
+  - CDP debugger ownership now counts repeated owners correctly and drops stale state when Chrome detaches the debugger
   - Related issues: `#152`, `#178`, `#162`, `#141`
   - Primary modules: `app/native-server/src/mcp/mcp-server.ts`, `mcp-server-stdio.ts`, `app/chrome-extension/entrypoints/background/native-host.ts`, `computer.ts`, `common.ts`, `app/chrome-extension/utils/cdp-session-manager.ts`
 

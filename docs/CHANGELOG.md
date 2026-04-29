@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.6] - 2026-04-29
+
+### Changed
+
+- **Multi-session isolation**: MCP Streamable HTTP / SSE sessions now carry session context into the extension, so tab-scoped tools reuse each session's own last known tab/window when callers omit `tabId` / `windowId`
+- **Concurrency control**: same-session and same-tab browser tool calls are now queued to reduce cross-session interference, focus stealing, and interleaved actions
+- **Version consistency**: package versions and MCP client/server metadata now consistently use `1.0.6` instead of mixed legacy `1.0.3` / `1.0.5` strings
+
+### Fixed
+
+- **CDP session ownership**: debugger owner tracking now counts repeated owners correctly and clears stale state when Chrome detaches the debugger
+
 ## [v1.0.5] - 2026-04-28
 
 ### Added

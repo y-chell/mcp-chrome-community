@@ -11,6 +11,7 @@ import { initWebEditorListeners } from './web-editor';
 import { initQuickPanelAgentHandler } from './quick-panel/agent-handler';
 import { initQuickPanelCommands } from './quick-panel/commands';
 import { initQuickPanelTabsHandler } from './quick-panel/tabs-handler';
+import { initBrowserToolSessionListeners } from './tools/browser-session-context';
 
 // Record-Replay V3 (feature flag)
 import { bootstrapV3 } from './record-replay-v3/bootstrap';
@@ -40,6 +41,7 @@ export default defineBackground(() => {
   initNativeHostListener();
   initSemanticSimilarityListener();
   initStorageManagerListener();
+  initBrowserToolSessionListeners();
   // Record & Replay V1/V2 listeners
   initRecordReplayListeners();
 

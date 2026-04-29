@@ -67,7 +67,7 @@ mac路径： /Users/xxx/Library/Application\ Support/Google/Chrome/NativeMessagi
 {
   "name": "com.chromemcp.nativehost",
   "description": "Native Messaging host for mcp-chrome-community",
-  "path": "/Users/xxx/Library/pnpm/global/5/.pnpm/mcp-chrome-community-bridge@1.0.3/node_modules/mcp-chrome-community-bridge/dist/run_host.sh",
+  "path": "/Users/xxx/Library/pnpm/global/5/.pnpm/mcp-chrome-community-bridge@1.0.6/node_modules/mcp-chrome-community-bridge/dist/run_host.sh",
   "type": "stdio",
   "allowed_origins": ["chrome-extension://hbdgbgagpkpjffpklnamcljpakneikee/"]
 }
