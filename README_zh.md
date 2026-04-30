@@ -415,50 +415,54 @@ https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
 
 > v1.0.7 已经用真实 Chrome 配置和临时本地页面跑过一轮验收。大部分页面操作确实更快、更适合 agent 使用，但还发现了几处真实环境里的问题，下一步优先修这些。
 
-- [ ] `P0` 把剪贴板能力修到真实浏览器里稳定可用
+- [x] `P0` 把剪贴板能力修到真实浏览器里稳定可用
   - 发现的问题：`chrome_clipboard paste_text` 可以把文本插入页面输入框，但直接 `read_text`、`write_text`、`copy_selection` 会因为 offscreen document 没有焦点或 `document.execCommand("copy")` 返回 false 而失败
+  - 这轮处理：`read_text` / `write_text` 会优先走已聚焦页面的 Clipboard API；offscreen 读写在 `navigator.clipboard` 被拦住时也会退回 `execCommand`；`copy_selection` 在系统剪贴板写入失败时仍返回提取到的文本，并标记 `partialSuccess` / `clipboardWritten`
   - 建议子任务：
-    1. 重做剪贴板通道选择：有页面上下文时优先走已聚焦页面执行，只有浏览器焦点规则允许时再走 offscreen
-    2. `copy_selection` 即使写系统剪贴板失败，也要返回已提取到的文本，并明确标记为部分成功
-    3. 补聚焦 tab、未聚焦窗口、普通输入框、textarea、contenteditable、selector 目标复制/粘贴的回归用例
-    4. 文档里写清楚浏览器权限和焦点限制，方便 agent 判断该用 `paste_text` 还是系统剪贴板读写
+    1. 已完成：重做剪贴板通道选择：有页面上下文时优先走已聚焦页面执行，只有浏览器焦点规则允许时再走 offscreen
+    2. 已完成：`copy_selection` 即使写系统剪贴板失败，也会返回已提取到的文本，并明确标记为部分成功
+    3. 已完成：补 page / offscreen fallback / selector 复制粘贴的回归用例；更完整的真实浏览器覆盖放到下面的验收套件
+    4. 已完成：文档里写清楚浏览器权限和焦点限制，方便 agent 判断该用 `paste_text` 还是系统剪贴板读写
   - 验收方向：MCP 客户端直接调用 `read_text`、`write_text`、`paste_text`、`copy_selection` 时，不需要用户手动点页面也能有稳定结果
   - 主要模块：`clipboard.ts`、`offscreen-manager.ts`、`entrypoints/offscreen/main.ts`、`wxt.config.ts`
 
-- [ ] `P0` 修复本地 URL 和特殊 URL 的跳转处理
+- [x] `P0` 修复本地 URL 和特殊 URL 的跳转处理
   - 发现的问题：跳转 `http://127.0.0.1:8765/...` 时被改成了类似 `http://www.127.0.0.1:8765/*` 的非法 pattern；换成 `localhost` 正常
+  - 这轮处理：URL pattern 生成不会再给 `localhost`、IPv4、IPv6 补 `www`；`chrome://` 等特殊地址不再生成非法 pattern，而是扫描现有标签页再决定是否打开
   - 建议子任务：
-    1. 导航和权限 pattern 生成时保留 IP、`localhost`、端口号和已合法的绝对 URL，不要乱补 `www`
-    2. 明确 `file://`、`data:`、`chrome://`、扩展页这些地址的支持边界
-    3. 补 `localhost`、`127.0.0.1`、IPv6 loopback、自定义端口、query、hash、编码路径的回归测试
+    1. 已完成：导航和权限 pattern 生成时保留 IP、`localhost`、端口号和已合法的绝对 URL，不再乱补 `www`
+    2. 已完成：明确 `file://`、`data:`、`chrome://`、扩展页这些地址的支持边界：已有标签页可识别，是否能新开仍以 Chrome 自身限制为准
+    3. 已完成：补 `localhost`、`127.0.0.1`、IPv6 loopback、自定义端口、query、hash 的回归测试
   - 验收方向：本地开发地址能直接跳转，不会被改成非法 hostname
   - 主要模块：`common.ts`、导航 URL helper、host permission / match pattern helper
 
 - [ ] `P1` 给每次发布补真实浏览器验收套件
   - 这次手工验收覆盖了 `read_page`、`fill_form`、点击、等待、悬停、拖拽、截图、console 证据、新标签识别、标签组；这些应该变成发布前可重复跑的检查
   - 建议子任务：
-    1. 加一个本地 fixture 页面，包含表单、异步更新、console 输出、新标签链接、hover 区域、拖拽区域、剪贴板输入框
-    2. 加一个通过 stdio MCP 客户端调用工具的 smoke 脚本，不直接 import 扩展内部代码
-    3. 脚本跑完要能清理现场：关闭创建的标签页、取消标签组、停止本地服务、尽量恢复剪贴板内容
-    4. 输出一份简短的 release checklist，方便发布前确认
+    1. 部分完成：`pnpm smoke:stdio -- --real-browser` 会启动内置本地 fixture，覆盖表单、异步更新、console 输出、新标签链接和剪贴板输入框；hover/拖拽覆盖后续再补
+    2. 已完成：`pnpm smoke:stdio` 通过 built stdio MCP server 校验工具列表；`--call-health` 会验证真实浏览器扩展和 native bridge
+    3. 已完成：真实浏览器 smoke 跑完会关闭创建的标签页、停止本地服务，并尽量恢复剪贴板内容
+    4. 已完成：smoke 命令输出精简 JSON，包含工具数量、health 元信息、创建的标签页 ID、剪贴板通道和 debug evidence 计数
   - 验收方向：每个候选版本都能证明浏览器扩展、native bridge、stdio server、工具 schema 在真实浏览器里能一起工作
   - 主要模块：`app/native-server`、`app/chrome-extension/tests`、发布脚本
 
-- [ ] `P1` 让工具列表和版本新旧更容易确认
+- [x] `P1` 让工具列表和版本新旧更容易确认
   - 发现的问题：新启动的 MCP 客户端能看到 `chrome_clipboard` 和 `chrome_tab_group`，但已经运行中的 agent 会话可能还拿着旧工具列表，需要重连或重启才刷新
+  - 这轮处理：新增 `chrome_health`，返回扩展版本、bridge 版本、schema hash、工具数量、扩展 ID、窗口/标签页数量和 native host 状态
   - 建议子任务：
-    1. 增加一个轻量 health/version 工具或状态字段，返回扩展版本、bridge 版本、schema 版本、扩展 ID、已连接 tab 数
-    2. 文档里写清楚安装新扩展后的刷新顺序：重载扩展、重启 MCP client/agent、确认 tool schema 版本
-    3. native bridge 响应里考虑带 schema hash，方便发现客户端还在用旧缓存
+    1. 已完成：增加一个轻量 health/version 工具，返回扩展版本、bridge 版本、schema 版本、扩展 ID、已连接 tab 数
+    2. 已完成：文档里写清楚安装新扩展后的刷新顺序：重载扩展、重启 MCP client/agent、确认 tool schema 版本
+    3. 已完成：native bridge 给 `chrome_health` 响应补 bridge 版本和会话信息，schema hash 由扩展侧返回
   - 验收方向：用户和 agent 能快速确认自己用的是新工具，不是旧 schema
   - 主要模块：`register-tools.ts`、`mcp-server-stdio.ts`、native host 连接/状态代码、文档
 
-- [ ] `P1` 降低调试证据里的噪音
+- [x] `P1` 降低调试证据里的噪音
   - 发现的问题：`chrome_collect_debug_evidence` 能拿到页面日志，但也会混入其他已安装扩展的 console 输出和 runtime exception
+  - 这轮处理：默认过滤 `chrome-extension://` / `moz-extension://` 来源日志，页面来源排在前面；需要看扩展/content-script 日志时可传 `includeExtensionConsole=true`
   - 建议子任务：
-    1. 默认优先返回页面来源日志，扩展/content-script 日志改成可选
-    2. 按 source URL 分组 console 信息，把页面错误放在第三方扩展噪音前面
-    3. 增加按页面 URL、扩展 URL、日志级别、已知无害 content-script 消息过滤的选项
+    1. 已完成：默认优先返回页面来源日志，扩展/content-script 日志改成可选
+    2. 已完成：按 source URL 分组 console 信息，把页面错误放在第三方扩展噪音前面
+    3. 已完成：增加扩展 URL 和日志级别过滤；已知无害 content-script 消息可后续继续补规则
   - 验收方向：网页没反应时，返回的第一批证据应该优先指向网页本身，而不是无关浏览器扩展
   - 主要模块：`console.ts`、`console-buffer.ts`、`debug-evidence.ts`
 

@@ -14,6 +14,22 @@
 
 ## 📊 浏览器管理
 
+### `chrome_health`
+
+返回当前扩展、bridge、工具 schema 和浏览器标签页概况。升级或重载扩展后，可用它确认 MCP 客户端拿到的是新工具列表。
+
+升级后的确认顺序：先在 `chrome://extensions/` 重载扩展，再重启 MCP client / agent，最后调用 `chrome_health` 对比 `extension.version`、`bridge.version` 和 `schema.schemaHash`。
+
+**参数**：无
+
+**返回重点**：
+
+- `extension`：扩展 ID、名称、版本、manifest 版本
+- `bridge`：native bridge 名称、版本、当前 MCP transport / session 信息（经 MCP 调用时返回）
+- `schema`：工具数量、工具名列表、`schemaHash`
+- `browser`：当前窗口数、标签页数、活动标签页
+- `nativeHost`：最近记录的 native server 状态和自动连接设置
+
 ### `get_windows_and_tabs`
 
 列出当前打开的所有浏览器窗口和标签页。
@@ -539,6 +555,7 @@
 - `includeExceptions`（布尔值，可选）：是否带未捕获 runtime exception（默认：`true`）
 - `onlyErrors`（布尔值，可选）：只带 error 级别 console 日志
 - `consoleLimit`（数字，可选）：最多返回多少条 console 消息（默认：`20`）
+- `includeExtensionConsole`（布尔值，可选）：是否带 `chrome-extension://` / `moz-extension://` 来源日志（默认：`false`）
 - `clearConsole` / `clearConsoleAfterRead`（布尔值，可选）：仅 buffer 模式有效
 - `includeNetworkSummary`（布尔值，可选）：如果有，顺手带最近网络抓包摘要（默认：`true`）
 - `networkLimit`（数字，可选）：网络摘要里最多带多少条最近请求
@@ -558,7 +575,8 @@
 
 - `tab`：`tabId`、`windowId`、`url`、`title`、`status`、`active`、`index`
 - `screenshot`：`captured`、`mimeType`、`base64Data`、`base64Length`
-- `console`：`source`、`historyAvailable`、`messageCount`、`exceptionCount`、`runtimeExceptionSummary`
+- `console`：`source`、`historyAvailable`、`messageCount`、`exceptionCount`、`sourceGroups`、`runtimeExceptionSummary`
+- 默认会过滤其他扩展的 console 噪音；如果确实要查 content-script 或扩展日志，传 `includeExtensionConsole=true`
 - `network`：`available`、`backend`、`source`、`failedRequestCount`、`recentRequests[]`
 
 ### `chrome_get_interactive_elements`
@@ -712,6 +730,44 @@
   "keys": "Ctrl+A",
   "selector": "#text-input",
   "delay": 100
+}
+```
+
+### `chrome_clipboard`
+
+读取、写入、复制选中内容，或把文本粘到页面目标里。
+
+现在会优先在已聚焦页面里调用 Clipboard API；页面不支持或焦点被浏览器拦住时，再尝试 offscreen / `execCommand` 备用通道。
+
+**参数**：
+
+- `action`（字符串，必需）：`read_text`、`write_text`、`paste_text`、`copy_selection`
+- `text`（字符串，可选）：`write_text` / `paste_text` 要写入或粘贴的文本；`paste_text` 不传时会先读剪贴板
+- `ref`（字符串，可选）：来自 `chrome_read_page` 的元素 ref，用于 `paste_text` / `copy_selection`
+- `selector`（字符串，可选）：CSS 或 XPath 目标，用于 `paste_text` / `copy_selection`
+- `selectorType`（字符串，可选）：`css` 或 `xpath`，默认 `css`
+- `tabId` / `windowId` / `frameId`（可选）：指定目标标签页、窗口或 frame
+
+**返回重点**：
+
+- `clipboardTransport`：实际使用的通道，可能是 `page-navigator`、`offscreen`、`page-exec-command`
+- `copy_selection` 会先返回提取到的 `text`；如果系统剪贴板写入失败，会返回 `partialSuccess: true` 和 `clipboardWritten: false`
+- `paste_text` 直接改页面输入框时不完全依赖系统剪贴板，更适合普通输入框、`textarea`、`contenteditable`
+
+**示例**：
+
+```json
+{
+  "action": "paste_text",
+  "selector": "#message",
+  "text": "hello"
+}
+```
+
+```json
+{
+  "action": "copy_selection",
+  "selector": "textarea"
 }
 ```
 

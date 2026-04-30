@@ -45,7 +45,7 @@ export class AgentToolBridge {
     this.client = new Client(
       {
         name: 'mcp-chrome-community-agent-bridge',
-        version: '1.0.7',
+        version: '1.0.8',
       },
       {},
     );

@@ -234,4 +234,98 @@ describe('console debugging tools', () => {
     });
     expect(parsed.network.recentRequests).toHaveLength(2);
   });
+
+  it('filters extension console noise by default and can opt in to it', async () => {
+    vi.spyOn(consoleBuffer, 'isCapturing').mockReturnValue(true);
+    vi.spyOn(consoleTool, 'execute').mockResolvedValue({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            tabId: 7,
+            tabUrl: 'https://example.com/checkout',
+            tabTitle: 'Checkout',
+            messages: [
+              {
+                timestamp: 110,
+                level: 'error',
+                text: 'page failed',
+                url: 'https://example.com/app.js',
+              },
+              {
+                timestamp: 120,
+                level: 'error',
+                text: 'extension failed',
+                url: 'chrome-extension://noise/content.js',
+              },
+            ],
+            exceptions: [
+              {
+                timestamp: 130,
+                text: 'TypeError: page boom',
+                url: 'https://example.com/app.js',
+              },
+              {
+                timestamp: 140,
+                text: 'TypeError: extension boom',
+                url: 'chrome-extension://noise/content.js',
+              },
+            ],
+            messageCount: 2,
+            exceptionCount: 2,
+          }),
+        },
+      ],
+      isError: false,
+    } as any);
+
+    const filteredResult = await collectDebugEvidenceTool.execute({
+      tabId: 7,
+      includeScreenshot: false,
+      includeNetworkSummary: false,
+      consoleLimit: 10,
+    } as any);
+    const filtered = parseJsonResult(filteredResult);
+
+    expect(filtered.console).toMatchObject({
+      messageCount: 1,
+      exceptionCount: 1,
+      rawMessageCount: 2,
+      rawExceptionCount: 2,
+      filteredOutExtensionMessageCount: 1,
+      filteredOutExtensionExceptionCount: 1,
+    });
+    expect(filtered.console.recentMessages).toEqual([
+      expect.objectContaining({
+        text: 'page failed',
+        sourceKind: 'page',
+      }),
+    ]);
+    expect(filtered.console.recentExceptions).toEqual([
+      expect.objectContaining({
+        text: 'TypeError: page boom',
+        sourceKind: 'page',
+      }),
+    ]);
+
+    const withExtensionsResult = await collectDebugEvidenceTool.execute({
+      tabId: 7,
+      includeScreenshot: false,
+      includeNetworkSummary: false,
+      includeExtensionConsole: true,
+      consoleLimit: 10,
+    } as any);
+    const withExtensions = parseJsonResult(withExtensionsResult);
+
+    expect(withExtensions.console).toMatchObject({
+      messageCount: 2,
+      exceptionCount: 2,
+      filteredOutExtensionMessageCount: 0,
+      filteredOutExtensionExceptionCount: 0,
+    });
+    expect(withExtensions.console.recentMessages.map((message: any) => message.sourceKind)).toEqual(
+      ['page', 'extension'],
+    );
+  });
 });

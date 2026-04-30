@@ -1,3 +1,4 @@
+export { healthTool } from './health';
 export { navigateTool, closeTabsTool, switchTabTool } from './common';
 export { tabGroupTool } from './tab-group';
 export { windowTool } from './window';

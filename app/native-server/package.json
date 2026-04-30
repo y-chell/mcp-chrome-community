@@ -1,6 +1,6 @@
 {
   "name": "mcp-chrome-community-bridge",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Native Messaging host for mcp-chrome-community",
   "main": "dist/index.js",
   "bin": {
@@ -20,6 +20,7 @@
     "lint": "eslint 'src/**/*.{js,ts}'",
     "lint:fix": "eslint 'src/**/*.{js,ts}' --fix",
     "format": "prettier --write 'src/**/*.{js,ts,json}'",
+    "smoke:stdio": "node dist/scripts/mcp-stdio-smoke.js",
     "register:dev": "node dist/scripts/register-dev.js",
     "postinstall": "node dist/scripts/postinstall.js"
   },

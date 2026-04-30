@@ -421,50 +421,54 @@ The next community-fork milestone is not "add as many tools as possible". The pr
 
 > The v1.0.7 acceptance run used a real Chrome profile and a temporary local page. Most page operations felt faster and easier for agents, but the run also exposed the next set of issues to fix before calling the toolset truly agent-grade.
 
-- [ ] `P0` Make clipboard operations reliable in real Chrome focus states
+- [x] `P0` Make clipboard operations reliable in real Chrome focus states
   - Observed issue: `chrome_clipboard paste_text` can insert text into page fields, but direct `read_text`, `write_text`, and `copy_selection` can fail when Chrome reports the offscreen document is not focused or `document.execCommand("copy")` returns false
+  - Completed in this pass: `read_text` / `write_text` prefer the focused page Clipboard API; offscreen reads/writes also fall back to `execCommand` when `navigator.clipboard` is blocked; `copy_selection` still returns extracted text when system clipboard writes fail and marks `partialSuccess` / `clipboardWritten`
   - Suggested subtasks:
-    1. Rework clipboard transport selection: prefer a focused page execution path when page context exists, and use offscreen only when browser focus rules allow it
-    2. For `copy_selection`, return the extracted text even when writing to the system clipboard fails, with a clear partial-success field
-    3. Add focused-tab, unfocused-window, active-page, contenteditable, textarea, and selector-targeted clipboard regression cases
-    4. Document browser permission and focus limits so agents can choose `paste_text` vs system clipboard actions correctly
+    1. Done: reworked clipboard transport selection to prefer focused page execution, then offscreen fallback
+    2. Done: `copy_selection` returns extracted text even when writing to the system clipboard fails, with a clear partial-success field
+    3. Done: added page / offscreen fallback / selector copy-paste regression tests; the broader real-browser matrix belongs in the release acceptance suite below
+    4. Done: documented browser permission and focus limits so agents can choose `paste_text` vs system clipboard actions correctly
   - Acceptance direction: `read_text`, `write_text`, `paste_text`, and `copy_selection` should work predictably from an MCP client without manual tab focusing
   - Primary modules: `clipboard.ts`, `offscreen-manager.ts`, `entrypoints/offscreen/main.ts`, `wxt.config.ts`
 
-- [ ] `P0` Fix URL normalization for local and special browser URLs
+- [x] `P0` Fix URL normalization for local and special browser URLs
   - Observed issue: navigating to `http://127.0.0.1:8765/...` was rewritten into an invalid match pattern similar to `http://www.127.0.0.1:8765/*`; `localhost` worked
+  - Completed in this pass: URL pattern generation no longer adds `www` to `localhost`, IPv4, or IPv6 hosts; special URLs such as `chrome://` skip invalid match-pattern generation and scan existing tabs instead
   - Suggested subtasks:
-    1. Preserve IP literals, `localhost`, port numbers, and already-valid absolute URLs during navigation and permission-pattern generation
-    2. Decide and document the intended behavior for `file://`, `data:`, `chrome://`, and extension pages
-    3. Add regression tests for `localhost`, `127.0.0.1`, IPv6 loopback, custom ports, query strings, hashes, and encoded paths
+    1. Done: preserve IP literals, `localhost`, port numbers, and already-valid absolute URLs during navigation and permission-pattern generation
+    2. Done: intended boundary for `file://`, `data:`, `chrome://`, and extension pages is explicit: existing tabs can be identified, and new navigation remains subject to Chrome's own restrictions
+    3. Done: added regression tests for `localhost`, `127.0.0.1`, IPv6 loopback, custom ports, query strings, and hashes
   - Acceptance direction: local dev URLs should navigate without being rewritten into invalid hostnames
   - Primary modules: `common.ts`, navigation URL helpers, host-permission / match-pattern helpers
 
 - [ ] `P1` Add a real-browser acceptance suite before every release
   - The v1.0.7 manual run covered `read_page`, `fill_form`, click, wait, hover, drag/drop, screenshots, console evidence, new-tab detection, and tab groups; these should become a repeatable release check
   - Suggested subtasks:
-    1. Add a small local fixture page with form, async update, console logging, new-tab link, hover target, drag/drop target, and clipboard fields
-    2. Add an MCP-client smoke script that calls tools through stdio instead of importing extension internals
-    3. Keep the test reversible: close created tabs, ungroup tabs, stop local servers, and restore clipboard content when possible
-    4. Record pass/fail output in a compact release checklist
+    1. Partly done: `pnpm smoke:stdio -- --real-browser` starts an embedded local fixture with form, async update, console logging, new-tab link, and clipboard fields; hover/drag coverage can be added next
+    2. Done: `pnpm smoke:stdio` checks the built stdio MCP server tool list; `--call-health` verifies the real browser extension/native bridge
+    3. Done: the real-browser smoke closes created tabs, stops the local server, and restores clipboard content when possible
+    4. Done: the smoke command prints compact JSON with tool count, health metadata, created tab IDs, clipboard transport, and debug-evidence counts
   - Acceptance direction: a release candidate should prove the browser extension, native bridge, stdio server, and published tool schemas work together in a real browser
   - Primary modules: `app/native-server`, `app/chrome-extension/tests`, release workflow scripts
 
-- [ ] `P1` Make tool discovery and version freshness obvious after extension reloads
+- [x] `P1` Make tool discovery and version freshness obvious after extension reloads
   - Observed issue: a newly started MCP client can see `chrome_clipboard` and `chrome_tab_group`, while an already-running agent session may still have a stale tool list until reconnect/restart
+  - Completed in this pass: added `chrome_health`, which returns extension version, bridge version, schema hash, tool count, extension ID, window/tab counts, and native host status
   - Suggested subtasks:
-    1. Add a lightweight health/version tool or status field that reports extension version, bridge version, schema version, extension ID, and connected tab count
-    2. Document the exact reload sequence after installing a new extension build: reload extension, restart MCP client/agent, then confirm tool schema version
-    3. Consider a schema hash in the native bridge response so stale clients are easier to detect
+    1. Done: added a lightweight health/version tool that reports extension version, bridge version, schema version, extension ID, and connected tab count
+    2. Done: documented the reload sequence after installing a new extension build: reload extension, restart MCP client/agent, then confirm tool schema version
+    3. Done: the native bridge augments `chrome_health` with bridge version/session data, while the extension returns the schema hash
   - Acceptance direction: users and agents should quickly know whether they are using the new tools or an old cached schema
   - Primary modules: `register-tools.ts`, `mcp-server-stdio.ts`, native host connection/status code, docs
 
-- [ ] `P1` Reduce noise in debugging evidence bundles
+- [x] `P1` Reduce noise in debugging evidence bundles
   - Observed issue: `chrome_collect_debug_evidence` successfully collected page logs, but the result also included unrelated extension console output and extension runtime exceptions
+  - Completed in this pass: `chrome-extension://` / `moz-extension://` entries are filtered by default, page-origin entries are ranked first, and callers can pass `includeExtensionConsole=true` when extension/content-script logs are needed
   - Suggested subtasks:
-    1. Default to page-origin logs first, and make extension/content-script logs opt-in
-    2. Group console messages by source URL and surface page errors before third-party extension noise
-    3. Add filters for page URL, extension URL, log level, and known benign content-script messages
+    1. Done: page-origin logs are shown first, and extension/content-script logs are opt-in
+    2. Done: console messages are grouped by source URL and page errors are surfaced before third-party extension noise
+    3. Done: added extension URL and log-level filtering; known benign content-script filters can be expanded later
   - Acceptance direction: when a web page fails, the first returned evidence should point at the page problem, not unrelated installed-extension noise
   - Primary modules: `console.ts`, `console-buffer.ts`, `debug-evidence.ts`
 

@@ -65,7 +65,7 @@ export const getStdioMcpServer = () => {
   stdioMcpServer = new Server(
     {
       name: 'mcp-chrome-community-stdio-server',
-      version: '1.0.7',
+      version: '1.0.8',
     },
     {
       capabilities: {
@@ -90,7 +90,7 @@ export const ensureMcpClient = async () => {
     }
 
     mcpClient = new Client(
-      { name: 'mcp-chrome-community-proxy', version: '1.0.7' },
+      { name: 'mcp-chrome-community-proxy', version: '1.0.8' },
       { capabilities: {} },
     );
     const transport = new StreamableHTTPClientTransport(resolveMcpServerUrl(), {});

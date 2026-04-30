@@ -22,6 +22,7 @@ interface DebugEvidenceToolParams {
   includeExceptions?: boolean;
   onlyErrors?: boolean;
   consoleLimit?: number;
+  includeExtensionConsole?: boolean;
   clearConsole?: boolean;
   clearConsoleAfterRead?: boolean;
   includeNetworkSummary?: boolean;
@@ -78,6 +79,156 @@ function normalizeLimit(value: unknown, fallback: number, max: number): number {
 function isErrorLevel(level?: unknown): boolean {
   const normalized = typeof level === 'string' ? level.toLowerCase() : '';
   return normalized === 'error' || normalized === 'assert';
+}
+
+type ConsoleSourceKind = 'page' | 'extension' | 'third_party' | 'unknown';
+
+function getEntrySourceUrl(entry: Record<string, unknown>): string {
+  if (typeof entry.url === 'string' && entry.url.trim()) return entry.url.trim();
+
+  const stackTrace = entry.stackTrace as Record<string, unknown> | undefined;
+  const callFrames = stackTrace?.callFrames;
+  if (Array.isArray(callFrames)) {
+    const frame = callFrames.find(
+      (item): item is Record<string, unknown> => !!item && typeof item === 'object',
+    );
+    if (typeof frame?.url === 'string' && frame.url.trim()) return frame.url.trim();
+  }
+
+  return '';
+}
+
+function classifyConsoleSource(sourceUrl: string, pageUrl: string): ConsoleSourceKind {
+  if (!sourceUrl) return 'unknown';
+  try {
+    const parsedSource = new URL(sourceUrl);
+    if (
+      parsedSource.protocol === 'chrome-extension:' ||
+      parsedSource.protocol === 'moz-extension:' ||
+      parsedSource.protocol === 'safari-web-extension:'
+    ) {
+      return 'extension';
+    }
+
+    const parsedPage = new URL(pageUrl);
+    return parsedSource.origin === parsedPage.origin ? 'page' : 'third_party';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function consoleSourceRank(kind: ConsoleSourceKind): number {
+  switch (kind) {
+    case 'page':
+      return 0;
+    case 'unknown':
+      return 1;
+    case 'third_party':
+      return 2;
+    case 'extension':
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function sourceGroupKey(sourceUrl: string, kind: ConsoleSourceKind): string {
+  if (!sourceUrl) return `${kind}:`;
+  try {
+    const parsed = new URL(sourceUrl);
+    return `${kind}:${parsed.origin}`;
+  } catch {
+    return `${kind}:${sourceUrl}`;
+  }
+}
+
+function buildSourceGroupSummary(items: Array<Record<string, unknown>>) {
+  const groups = new Map<
+    string,
+    {
+      sourceKind: ConsoleSourceKind;
+      sourceUrl: string;
+      count: number;
+      errorCount: number;
+      lastSeenAt?: number;
+    }
+  >();
+
+  for (const item of items) {
+    const sourceKind =
+      typeof item.sourceKind === 'string' ? (item.sourceKind as ConsoleSourceKind) : 'unknown';
+    const sourceUrl = typeof item.sourceUrl === 'string' ? item.sourceUrl : '';
+    const key = sourceGroupKey(sourceUrl, sourceKind);
+    const timestamp =
+      typeof item.timestamp === 'number' && Number.isFinite(item.timestamp)
+        ? item.timestamp
+        : undefined;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (isErrorLevel(item.level)) existing.errorCount += 1;
+      if ((timestamp || 0) >= (existing.lastSeenAt || 0)) {
+        existing.lastSeenAt = timestamp;
+      }
+      continue;
+    }
+
+    groups.set(key, {
+      sourceKind,
+      sourceUrl,
+      count: 1,
+      errorCount: isErrorLevel(item.level) ? 1 : 0,
+      lastSeenAt: timestamp,
+    });
+  }
+
+  return Array.from(groups.values()).sort(
+    (a, b) =>
+      consoleSourceRank(a.sourceKind) - consoleSourceRank(b.sourceKind) ||
+      b.errorCount - a.errorCount ||
+      (b.lastSeenAt || 0) - (a.lastSeenAt || 0),
+  );
+}
+
+function prioritizeConsoleItems<T extends Record<string, unknown>>(
+  items: T[],
+  pageUrl: string,
+  includeExtensionConsole: boolean,
+  options: { exception?: boolean } = {},
+): {
+  items: Array<T & { sourceUrl: string; sourceKind: ConsoleSourceKind }>;
+  filteredOutExtensionCount: number;
+} {
+  const classified = items.map((item) => {
+    const sourceUrl = getEntrySourceUrl(item);
+    return {
+      ...item,
+      sourceUrl,
+      sourceKind: classifyConsoleSource(sourceUrl, pageUrl),
+    };
+  });
+
+  const filtered = includeExtensionConsole
+    ? classified
+    : classified.filter((item) => item.sourceKind !== 'extension');
+
+  const sorted = [...filtered].sort((a, b) => {
+    const sourceDelta = consoleSourceRank(a.sourceKind) - consoleSourceRank(b.sourceKind);
+    if (sourceDelta !== 0) return sourceDelta;
+
+    const aError = options.exception || isErrorLevel(a.level) ? 0 : 1;
+    const bError = options.exception || isErrorLevel(b.level) ? 0 : 1;
+    if (aError !== bError) return aError - bError;
+
+    const aTime = typeof a.timestamp === 'number' && Number.isFinite(a.timestamp) ? a.timestamp : 0;
+    const bTime = typeof b.timestamp === 'number' && Number.isFinite(b.timestamp) ? b.timestamp : 0;
+    return bTime - aTime;
+  });
+
+  return {
+    items: sorted,
+    filteredOutExtensionCount: classified.length - filtered.length,
+  };
 }
 
 function summarizeExceptions(exceptions: Array<Record<string, unknown>>) {
@@ -416,6 +567,7 @@ class CollectDebugEvidenceTool extends BaseBrowserToolExecutor {
   private async collectConsole(
     tabId: number,
     args: DebugEvidenceToolParams,
+    fallbackPageUrl: string,
   ): Promise<Record<string, unknown>> {
     const consoleMode: DebugConsoleMode = args.consoleMode || 'auto';
     const includeExceptions = args.includeExceptions !== false;
@@ -439,6 +591,20 @@ class CollectDebugEvidenceTool extends BaseBrowserToolExecutor {
             (item): item is Record<string, unknown> => !!item && typeof item === 'object',
           )
         : [];
+      const pageUrl = typeof data.tabUrl === 'string' ? data.tabUrl : fallbackPageUrl;
+      const includeExtensionConsole = args.includeExtensionConsole === true;
+      const prioritizedMessages = prioritizeConsoleItems(
+        messages,
+        pageUrl,
+        includeExtensionConsole,
+      );
+      const prioritizedExceptions = prioritizeConsoleItems(
+        exceptions,
+        pageUrl,
+        includeExtensionConsole,
+        { exception: true },
+      );
+      const visibleItems = [...prioritizedMessages.items, ...prioritizedExceptions.items];
 
       return {
         available: true,
@@ -446,10 +612,18 @@ class CollectDebugEvidenceTool extends BaseBrowserToolExecutor {
         historyAvailable,
         includeExceptions,
         onlyErrors,
-        messageCount: typeof data.messageCount === 'number' ? data.messageCount : messages.length,
-        exceptionCount:
+        includeExtensionConsole,
+        messageCount: prioritizedMessages.items.length,
+        exceptionCount: prioritizedExceptions.items.length,
+        rawMessageCount:
+          typeof data.messageCount === 'number' ? data.messageCount : messages.length,
+        rawExceptionCount:
           typeof data.exceptionCount === 'number' ? data.exceptionCount : exceptions.length,
-        errorLevelMessageCount: messages.filter((message) => isErrorLevel(message.level)).length,
+        filteredOutExtensionMessageCount: prioritizedMessages.filteredOutExtensionCount,
+        filteredOutExtensionExceptionCount: prioritizedExceptions.filteredOutExtensionCount,
+        errorLevelMessageCount: prioritizedMessages.items.filter((message) =>
+          isErrorLevel(message.level),
+        ).length,
         captureStartTime:
           typeof data.captureStartTime === 'number' ? data.captureStartTime : undefined,
         captureEndTime: typeof data.captureEndTime === 'number' ? data.captureEndTime : undefined,
@@ -461,9 +635,10 @@ class CollectDebugEvidenceTool extends BaseBrowserToolExecutor {
           typeof data.droppedMessageCount === 'number' ? data.droppedMessageCount : 0,
         droppedExceptionCount:
           typeof data.droppedExceptionCount === 'number' ? data.droppedExceptionCount : 0,
-        recentMessages: messages,
-        recentExceptions: exceptions,
-        runtimeExceptionSummary: summarizeExceptions(exceptions),
+        sourceGroups: buildSourceGroupSummary(visibleItems),
+        recentMessages: prioritizedMessages.items,
+        recentExceptions: prioritizedExceptions.items,
+        runtimeExceptionSummary: summarizeExceptions(prioritizedExceptions.items),
         note: fallbackNote,
       };
     };
@@ -549,7 +724,7 @@ class CollectDebugEvidenceTool extends BaseBrowserToolExecutor {
         ? await this.collectScreenshot(tabId, windowId, args)
         : { included: false };
       const consoleData = consoleIncluded
-        ? await this.collectConsole(tabId, args)
+        ? await this.collectConsole(tabId, args, tab.url || '')
         : { included: false };
       const network = networkIncluded
         ? buildNetworkSummary(tabId, networkLimit)

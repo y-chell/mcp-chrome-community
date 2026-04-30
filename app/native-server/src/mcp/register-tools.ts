@@ -9,6 +9,9 @@ import { NativeMessageType, TOOL_SCHEMAS } from 'chrome-mcp-shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServerContext } from './mcp-server';
 
+const BRIDGE_VERSION = '1.0.8';
+const HEALTH_TOOL_NAME = 'chrome_health';
+
 type ToolCallContext = McpServerContext & {
   requestId?: string;
 };
@@ -85,6 +88,39 @@ function buildToolCallContext(
   };
 }
 
+function appendNativeHealthMetadata(result: CallToolResult, context: ToolCallContext) {
+  if (result.isError) return result;
+  const first = result.content?.[0];
+  if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
+
+  try {
+    const parsed = JSON.parse(first.text);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return result;
+
+    return {
+      ...result,
+      content: [
+        {
+          ...first,
+          text: JSON.stringify({
+            ...parsed,
+            bridge: {
+              name: 'mcp-chrome-community-bridge',
+              version: BRIDGE_VERSION,
+              transport: context.transport,
+              sessionId: context.sessionId,
+              requestId: context.requestId,
+            },
+          }),
+        },
+        ...(result.content || []).slice(1),
+      ],
+    };
+  } catch {
+    return result;
+  }
+}
+
 export const setupTools = (server: Server, context: McpServerContext = {}) => {
   // List tools handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -155,6 +191,9 @@ const handleToolCall = async (
       120000, // 延长到 120 秒，避免性能分析等长任务超时
     );
     if (response.status === 'success') {
+      if (name === HEALTH_TOOL_NAME) {
+        return appendNativeHealthMetadata(response.data, context);
+      }
       return response.data;
     } else {
       return {

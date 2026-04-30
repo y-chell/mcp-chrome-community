@@ -18,6 +18,107 @@ interface NavigateToolParams {
   background?: boolean; // when true, do not activate tab or focus window
 }
 
+const WEB_URL_SCHEMES = new Set(['http:', 'https:']);
+
+function stripIpv6Brackets(hostname: string): string {
+  return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
+}
+
+function isIpv4Address(hostname: string): boolean {
+  const parts = hostname.split('.');
+  return (
+    parts.length === 4 &&
+    parts.every((part) => {
+      if (!/^\d+$/.test(part)) return false;
+      const value = Number(part);
+      return value >= 0 && value <= 255 && String(value) === part;
+    })
+  );
+}
+
+function isLocalOrIpHostname(hostname: string): boolean {
+  const normalized = stripIpv6Brackets(hostname).toLowerCase();
+  return (
+    normalized === 'localhost' ||
+    normalized.endsWith('.localhost') ||
+    isIpv4Address(normalized) ||
+    normalized.includes(':')
+  );
+}
+
+function canAddWwwVariant(hostname: string): boolean {
+  const normalized = stripIpv6Brackets(hostname).toLowerCase();
+  return (
+    normalized.includes('.') && !normalized.startsWith('www.') && !isLocalOrIpHostname(normalized)
+  );
+}
+
+function withPort(hostname: string, port: string): string {
+  return port ? `${hostname}:${port}` : hostname;
+}
+
+function normalizeComparablePath(pathname: string): string {
+  if (!pathname) return '/';
+  const withLeading = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  return withLeading !== '/' && withLeading.endsWith('/') ? withLeading.slice(0, -1) : withLeading;
+}
+
+function normalizeComparableUrl(input: string): URL | undefined {
+  try {
+    return new URL(input);
+  } catch {
+    return undefined;
+  }
+}
+
+export function buildUrlQueryPatterns(input: string): {
+  patterns: string[];
+  canUseUrlFilter: boolean;
+  reason?: string;
+} {
+  const trimmed = input.trim();
+  if (!trimmed) return { patterns: [], canUseUrlFilter: false, reason: 'empty_url' };
+
+  if (trimmed.includes('*')) {
+    const scheme = trimmed.split(':', 1)[0]?.toLowerCase();
+    const canUseUrlFilter = scheme === 'http' || scheme === 'https';
+    return {
+      patterns: [trimmed],
+      canUseUrlFilter,
+      reason: canUseUrlFilter ? undefined : 'unsupported_match_pattern_scheme',
+    };
+  }
+
+  const parsed = normalizeComparableUrl(trimmed);
+  if (!parsed) {
+    return { patterns: [], canUseUrlFilter: false, reason: 'not_absolute_url' };
+  }
+
+  if (!WEB_URL_SCHEMES.has(parsed.protocol)) {
+    return { patterns: [], canUseUrlFilter: false, reason: 'unsupported_url_scheme' };
+  }
+
+  const patterns = new Set<string>();
+  const hostnames = new Set<string>([parsed.hostname]);
+  const hostnameNoWww = parsed.hostname.replace(/^www\./i, '');
+
+  hostnames.add(hostnameNoWww);
+  if (canAddWwwVariant(hostnameNoWww)) {
+    hostnames.add(`www.${hostnameNoWww}`);
+  }
+
+  const protocols = new Set<string>([parsed.protocol]);
+  protocols.add(parsed.protocol === 'https:' ? 'http:' : 'https:');
+
+  for (const protocol of protocols) {
+    for (const hostname of hostnames) {
+      patterns.add(`${protocol}//${withPort(hostname, parsed.port)}/*`);
+    }
+  }
+
+  return { patterns: Array.from(patterns), canUseUrlFilter: true };
+}
+
 /**
  * Tool for navigating to URLs in browser tabs or windows
  */
@@ -139,74 +240,44 @@ class NavigateTool extends BaseBrowserToolExecutor {
         };
       }
 
+      const normalizedUrl = url.trim();
+
       // 1. Check if URL is already open
-      // Prefer Chrome's URL match patterns for robust matching (host/path variations)
+      // Prefer Chrome's URL match patterns for http(s). For local/special URLs that
+      // cannot be represented safely as match patterns, query all tabs and filter below.
       console.log(`Checking if URL is already open: ${url}`);
 
-      // Build robust match patterns from the provided URL.
-      // This mirrors the approach in CloseTabsTool: ensure wildcard path and
-      // add common variants (www/no-www, http/https) to handle real-world redirects.
-      const buildUrlPatterns = (input: string): string[] => {
-        const patterns = new Set<string>();
+      const urlQuery = buildUrlQueryPatterns(normalizedUrl);
+      let candidateTabs: chrome.tabs.Tab[] = [];
+      if (urlQuery.canUseUrlFilter && urlQuery.patterns.length > 0) {
         try {
-          if (!input.includes('*')) {
-            const u = new URL(input);
-            // Use host-level wildcard to include all paths; we'll do precise selection later
-            const pathWildcard = '/*';
-
-            const hostNoWww = u.host.replace(/^www\./, '');
-            const hostWithWww = hostNoWww.startsWith('www.') ? hostNoWww : `www.${hostNoWww}`;
-
-            // Keep original host
-            patterns.add(`${u.protocol}//${u.host}${pathWildcard}`);
-            // Add no-www variant
-            patterns.add(`${u.protocol}//${hostNoWww}${pathWildcard}`);
-            // Add www variant
-            patterns.add(`${u.protocol}//${hostWithWww}${pathWildcard}`);
-
-            // Add protocol variant to catch http↔https redirects
-            const altProtocol = u.protocol === 'https:' ? 'http:' : 'https:';
-            patterns.add(`${altProtocol}//${u.host}${pathWildcard}`);
-            patterns.add(`${altProtocol}//${hostNoWww}${pathWildcard}`);
-            patterns.add(`${altProtocol}//${hostWithWww}${pathWildcard}`);
-          } else {
-            patterns.add(input);
-          }
-        } catch {
-          // Fallback: best-effort wildcard suffix
-          patterns.add(input.endsWith('/') ? `${input}*` : `${input}/*`);
+          candidateTabs = await chrome.tabs.query({ url: urlQuery.patterns });
+        } catch (error) {
+          console.warn('URL pattern query failed; falling back to all-tab scan:', error);
+          candidateTabs = await chrome.tabs.query({});
         }
-        return Array.from(patterns);
-      };
-
-      const urlPatterns = buildUrlPatterns(url);
-      const candidateTabs = await chrome.tabs.query({ url: urlPatterns });
-      console.log(`Found ${candidateTabs.length} matching tabs with patterns:`, urlPatterns);
+      } else {
+        candidateTabs = await chrome.tabs.query({});
+      }
+      console.log(`Found ${candidateTabs.length} candidate tabs for URL:`, {
+        url: normalizedUrl,
+        patterns: urlQuery.patterns,
+        queryReason: urlQuery.reason,
+      });
 
       // Prefer strict match when user specifies a concrete path/query.
       // Only fall back to host-level activation when the target is site root.
       const pickBestMatch = (target: string, tabsToPick: chrome.tabs.Tab[]) => {
-        let targetUrl: URL | undefined;
-        try {
-          targetUrl = new URL(target);
-        } catch {
+        const targetUrl = normalizeComparableUrl(target);
+        if (!targetUrl) {
           // Not a fully-qualified URL; cannot do structured comparison
           return tabsToPick[0];
         }
 
-        const normalizePath = (p: string) => {
-          if (!p) return '/';
-          // Ensure leading slash
-          const withLeading = p.startsWith('/') ? p : `/${p}`;
-          // Remove trailing slash except when root
-          return withLeading !== '/' && withLeading.endsWith('/')
-            ? withLeading.slice(0, -1)
-            : withLeading;
-        };
-
         const hostBase = (h: string) => h.replace(/^www\./, '').toLowerCase();
-        const isRootTarget = normalizePath(targetUrl.pathname) === '/' && !targetUrl.search;
-        const targetPath = normalizePath(targetUrl.pathname);
+        const isRootTarget =
+          normalizeComparablePath(targetUrl.pathname) === '/' && !targetUrl.search;
+        const targetPath = normalizeComparablePath(targetUrl.pathname);
         const targetSearch = targetUrl.search || '';
         const targetHostBase = hostBase(targetUrl.host);
 
@@ -214,17 +285,20 @@ class NavigateTool extends BaseBrowserToolExecutor {
 
         for (const tab of tabsToPick) {
           const tabUrlStr = tab.url || '';
-          let tabUrl: URL | undefined;
-          try {
-            tabUrl = new URL(tabUrlStr);
-          } catch {
+          const tabUrl = normalizeComparableUrl(tabUrlStr);
+          if (!tabUrl) {
+            continue;
+          }
+
+          if (tabUrl.protocol !== targetUrl.protocol && !WEB_URL_SCHEMES.has(targetUrl.protocol)) {
             continue;
           }
 
           const tabHostBase = hostBase(tabUrl.host);
-          if (tabHostBase !== targetHostBase) continue;
+          if (WEB_URL_SCHEMES.has(targetUrl.protocol) && tabHostBase !== targetHostBase) continue;
+          if (!WEB_URL_SCHEMES.has(targetUrl.protocol) && tabUrl.href !== targetUrl.href) continue;
 
-          const tabPath = normalizePath(tabUrl.pathname);
+          const tabPath = normalizeComparablePath(tabUrl.pathname);
           const tabSearch = tabUrl.search || '';
 
           // Scoring:
@@ -251,14 +325,14 @@ class NavigateTool extends BaseBrowserToolExecutor {
       };
 
       const explicitTab = await this.tryGetTab(tabId);
-      const existingTab = explicitTab || pickBestMatch(url, candidateTabs);
+      const existingTab = explicitTab || pickBestMatch(normalizedUrl, candidateTabs);
       if (existingTab?.id !== undefined) {
         console.log(
           `URL already open in Tab ID: ${existingTab.id}, Window ID: ${existingTab.windowId}`,
         );
         // Update URL only when explicit tab specified and url differs
         if (explicitTab && typeof explicitTab.id === 'number') {
-          await chrome.tabs.update(explicitTab.id, { url });
+          await chrome.tabs.update(explicitTab.id, { url: normalizedUrl });
         }
         // Optionally bring to foreground based on background flag
         await this.ensureFocus(existingTab, {
@@ -298,7 +372,7 @@ class NavigateTool extends BaseBrowserToolExecutor {
 
         // Create new window
         const newWindow = await chrome.windows.create({
-          url: url,
+          url: normalizedUrl,
           width: typeof width === 'number' ? width : DEFAULT_WINDOW_WIDTH,
           height: typeof height === 'number' ? height : DEFAULT_WINDOW_HEIGHT,
           focused: background === true ? false : true,
@@ -348,7 +422,7 @@ class NavigateTool extends BaseBrowserToolExecutor {
           console.log(`Found target Window ID: ${targetWindow.id}`);
 
           const newTab = await chrome.tabs.create({
-            url: url,
+            url: normalizedUrl,
             windowId: targetWindow.id,
             active: background === true ? false : true,
           });
@@ -386,7 +460,7 @@ class NavigateTool extends BaseBrowserToolExecutor {
           console.warn('No last focused window found, falling back to creating a new window.');
 
           const fallbackWindow = await chrome.windows.create({
-            url: url,
+            url: normalizedUrl,
             width: DEFAULT_WINDOW_WIDTH,
             height: DEFAULT_WINDOW_HEIGHT,
             focused: true,

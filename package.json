@@ -1,6 +1,6 @@
 {
   "name": "mcp-chrome-community-monorepo",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "author": "mcp-chrome-community",
   "repository": {
@@ -30,6 +30,7 @@
     "clean:modules": "pnpm -r exec rm -rf node_modules && rm -rf node_modules",
     "clean": "npm run clean:dist && npm run clean:modules",
     "typecheck": "pnpm -r exec tsc --noEmit",
+    "smoke:stdio": "pnpm --filter mcp-chrome-community-bridge smoke:stdio",
     "prepare": "husky"
   },
   "devDependencies": {

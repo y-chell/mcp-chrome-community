@@ -19,6 +19,10 @@ describe('high-value page operation tools', () => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
     offscreenManager.reset();
+    delete (chrome as any).scripting;
+    (chrome as any).windows = {
+      update: vi.fn().mockResolvedValue({}),
+    };
 
     (chrome.tabs.query as any) = vi.fn().mockResolvedValue([
       {
@@ -42,7 +46,45 @@ describe('high-value page operation tools', () => {
     });
   });
 
-  it('writes clipboard text through the offscreen document', async () => {
+  it('writes clipboard text through the focused page when available', async () => {
+    (chrome.runtime.sendMessage as any) = vi.fn().mockResolvedValue({ success: true });
+    (chrome as any).scripting = {
+      executeScript: vi.fn().mockResolvedValue([
+        {
+          result: {
+            success: true,
+            focused: true,
+          },
+        },
+      ]),
+    };
+
+    const result = await clipboardTool.execute({
+      action: 'write_text',
+      text: 'hello clipboard',
+      tabId,
+    });
+
+    expect(result.isError).toBe(false);
+    expect(chrome.windows.update).toHaveBeenCalledWith(1, { focused: true });
+    expect(chrome.tabs.update).toHaveBeenCalledWith(tabId, { active: true });
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { tabId },
+        world: 'MAIN',
+        args: ['hello clipboard'],
+      }),
+    );
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(parseJsonResult(result)).toMatchObject({
+      success: true,
+      action: 'write_text',
+      length: 15,
+      clipboardTransport: 'page-navigator',
+    });
+  });
+
+  it('falls back to the offscreen document when page clipboard is unavailable', async () => {
     (chrome.runtime as any).getContexts = vi.fn().mockResolvedValue([]);
     (chrome as any).offscreen = {
       createDocument: vi.fn().mockResolvedValue(undefined),
@@ -66,6 +108,62 @@ describe('high-value page operation tools', () => {
       action: 'write_text',
       length: 15,
       clipboardTransport: 'offscreen',
+    });
+  });
+
+  it('returns selected text as partial success when clipboard write fails', async () => {
+    (chrome.runtime as any).getContexts = vi.fn().mockResolvedValue([{ contextId: 'offscreen' }]);
+    (chrome as any).offscreen = {
+      createDocument: vi.fn().mockResolvedValue(undefined),
+    };
+    (chrome.runtime.sendMessage as any) = vi.fn().mockResolvedValue({
+      success: false,
+      error: 'offscreen denied',
+    });
+    (chrome as any).scripting = {
+      executeScript: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            result: {
+              success: true,
+              text: 'selected text',
+              source: 'selection',
+            },
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            result: {
+              success: false,
+              error: 'page denied',
+            },
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            result: {
+              success: false,
+              error: 'execCommand returned false',
+            },
+          },
+        ]),
+    };
+
+    const result = await clipboardTool.execute({
+      action: 'copy_selection',
+      tabId,
+    });
+
+    expect(result.isError).toBe(false);
+    expect(parseJsonResult(result)).toMatchObject({
+      success: true,
+      partialSuccess: true,
+      action: 'copy_selection',
+      text: 'selected text',
+      length: 13,
+      source: 'selection',
+      clipboardWritten: false,
     });
   });
 

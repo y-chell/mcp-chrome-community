@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.8] - 2026-04-30
+
+### Added
+
+- **STDIO smoke checks**: added `pnpm smoke:stdio` to validate the built stdio MCP server tool list, `--call-health` for real browser/native bridge checks, and `--real-browser` for a reversible local-fixture browser flow
+
+### Fixed
+
+- **Clipboard focus handling**: `chrome_clipboard` now tries focused page Clipboard API calls before offscreen fallback; offscreen reads/writes also fall back to `execCommand` when `navigator.clipboard` is blocked, and `copy_selection` returns extracted text with `partialSuccess` when system clipboard writes are blocked
+- **Local URL navigation**: `chrome_navigate` no longer generates invalid `www.127.0.0.1`-style match patterns for localhost / IP URLs, and special browser URLs skip invalid match-pattern queries
+- **Debug evidence noise**: `chrome_collect_debug_evidence` now filters extension-origin console entries by default, groups messages by source URL, and exposes `includeExtensionConsole` for opt-in extension/content-script logs
+- **Version freshness checks**: added `chrome_health` to report extension version, bridge version, schema hash, tool count, extension ID, tab/window counts, and native host status
+- **Shared package exports**: `chrome-mcp-shared` now exposes top-level package `types` in `exports`, fixing native bridge TypeScript builds under `moduleResolution: "NodeNext"`
+
 ## [v1.0.7] - 2026-04-29
 
 ### Added

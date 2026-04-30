@@ -57,6 +57,72 @@ type MessageResponse = {
   currentConfig?: any;
 };
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function createClipboardTextarea(value = ''): HTMLTextAreaElement {
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('aria-hidden', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '-9999px';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  return textarea;
+}
+
+async function readClipboardText(): Promise<string> {
+  let navigatorError: string | undefined;
+  try {
+    return await navigator.clipboard.readText();
+  } catch (error) {
+    navigatorError = getErrorMessage(error);
+  }
+
+  const textarea = createClipboardTextarea();
+  try {
+    const pasted = document.execCommand('paste');
+    if (!pasted) {
+      throw new Error('document.execCommand("paste") returned false');
+    }
+    return textarea.value;
+  } catch (error) {
+    throw new Error(
+      `navigator.clipboard.readText failed: ${navigatorError}; ${getErrorMessage(error)}`,
+    );
+  } finally {
+    textarea.remove();
+  }
+}
+
+async function writeClipboardText(text: string): Promise<void> {
+  let navigatorError: string | undefined;
+  try {
+    await navigator.clipboard.writeText(text);
+    return;
+  } catch (error) {
+    navigatorError = getErrorMessage(error);
+  }
+
+  const textarea = createClipboardTextarea(text);
+  try {
+    const copied = document.execCommand('copy');
+    if (!copied) {
+      throw new Error('document.execCommand("copy") returned false');
+    }
+  } catch (error) {
+    throw new Error(
+      `navigator.clipboard.writeText failed: ${navigatorError}; ${getErrorMessage(error)}`,
+    );
+  } finally {
+    textarea.remove();
+  }
+}
+
 // Listen for messages from the extension
 chrome.runtime.onMessage.addListener(
   (
@@ -138,19 +204,17 @@ chrome.runtime.onMessage.addListener(
         }
 
         case OFFSCREEN_MESSAGE_TYPES.CLIPBOARD_READ_TEXT: {
-          navigator.clipboard
-            .readText()
+          readClipboardText()
             .then((text) => sendResponse({ success: true, text }))
-            .catch((error) => sendResponse({ success: false, error: error.message }));
+            .catch((error) => sendResponse({ success: false, error: getErrorMessage(error) }));
           break;
         }
 
         case OFFSCREEN_MESSAGE_TYPES.CLIPBOARD_WRITE_TEXT: {
           const text = String((message as any).text ?? '');
-          navigator.clipboard
-            .writeText(text)
+          writeClipboardText(text)
             .then(() => sendResponse({ success: true }))
-            .catch((error) => sendResponse({ success: false, error: error.message }));
+            .catch((error) => sendResponse({ success: false, error: getErrorMessage(error) }));
           break;
         }
 

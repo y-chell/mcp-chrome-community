@@ -14,6 +14,22 @@ Complete reference for all available tools and their parameters.
 
 ## 📊 Browser Management
 
+### `chrome_health`
+
+Return current extension, bridge, tool schema, and browser tab metadata. Use it after extension reloads or upgrades to confirm the MCP client sees the fresh tool list.
+
+Upgrade check order: reload the extension in `chrome://extensions/`, restart the MCP client / agent, then call `chrome_health` and compare `extension.version`, `bridge.version`, and `schema.schemaHash`.
+
+**Parameters**: None
+
+**Response highlights**:
+
+- `extension`: extension ID, name, version, and manifest version
+- `bridge`: native bridge name, version, and current MCP transport / session fields (when called through MCP)
+- `schema`: tool count, tool names, and `schemaHash`
+- `browser`: current window count, tab count, and active tab
+- `nativeHost`: latest recorded native server status and auto-connect setting
+
 ### `get_windows_and_tabs`
 
 List all currently open browser windows and tabs.
@@ -499,6 +515,7 @@ If `consoleMode` is `auto`, the tool prefers the per-tab console buffer and fall
 - `includeExceptions` (boolean, optional): include uncaught runtime exceptions (default: `true`)
 - `onlyErrors` (boolean, optional): only include error-level console logs
 - `consoleLimit` (number, optional): max console messages to return (default: `20`)
+- `includeExtensionConsole` (boolean, optional): include `chrome-extension://` / `moz-extension://` entries (default: `false`)
 - `clearConsole` / `clearConsoleAfterRead` (boolean, optional): buffer mode only
 - `includeNetworkSummary` (boolean, optional): include recent network-capture summary when available (default: `true`)
 - `networkLimit` (number, optional): max recent requests in the network summary
@@ -518,7 +535,8 @@ If `consoleMode` is `auto`, the tool prefers the per-tab console buffer and fall
 
 - `tab`: `tabId`, `windowId`, `url`, `title`, `status`, `active`, `index`
 - `screenshot`: `captured`, `mimeType`, `base64Data`, `base64Length`
-- `console`: `source`, `historyAvailable`, `messageCount`, `exceptionCount`, `runtimeExceptionSummary`
+- `console`: `source`, `historyAvailable`, `messageCount`, `exceptionCount`, `sourceGroups`, `runtimeExceptionSummary`
+- extension-origin console noise is filtered by default; pass `includeExtensionConsole=true` when you need content-script or extension logs
 - `network`: `available`, `backend`, `source`, `failedRequestCount`, `recentRequests[]`
 
 ### `search_tabs_content`
@@ -762,6 +780,44 @@ Simulate keyboard input and shortcuts.
   "keys": "Ctrl+A",
   "selector": "#text-input",
   "delay": 100
+}
+```
+
+### `chrome_clipboard`
+
+Read, write, copy selected text, or paste text into a page target.
+
+The tool now prefers the focused page Clipboard API when possible. If the page context or browser focus rules block that path, it falls back to offscreen / `execCommand` transports.
+
+**Parameters**:
+
+- `action` (string, required): `read_text`, `write_text`, `paste_text`, or `copy_selection`
+- `text` (string, optional): text for `write_text` / `paste_text`; when omitted, `paste_text` first reads the clipboard
+- `ref` (string, optional): element ref from `chrome_read_page` for `paste_text` / `copy_selection`
+- `selector` (string, optional): CSS or XPath target for `paste_text` / `copy_selection`
+- `selectorType` (string, optional): `css` or `xpath` (default: `css`)
+- `tabId` / `windowId` / `frameId` (optional): target tab, window, or frame
+
+**Response highlights**:
+
+- `clipboardTransport`: actual transport, such as `page-navigator`, `offscreen`, or `page-exec-command`
+- `copy_selection` returns extracted `text` first; if writing to the system clipboard fails, it returns `partialSuccess: true` and `clipboardWritten: false`
+- `paste_text` can directly update page inputs and is usually the better choice for normal inputs, `textarea`, and `contenteditable`
+
+**Examples**:
+
+```json
+{
+  "action": "paste_text",
+  "selector": "#message",
+  "text": "hello"
+}
+```
+
+```json
+{
+  "action": "copy_selection",
+  "selector": "textarea"
 }
 ```
 

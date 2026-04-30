@@ -2,6 +2,7 @@ import { type Tool } from '@modelcontextprotocol/sdk/types.js';
 
 export const TOOL_NAMES = {
   BROWSER: {
+    HEALTH: 'chrome_health',
     GET_WINDOWS_AND_TABS: 'get_windows_and_tabs',
     LIST_FRAMES: 'chrome_list_frames',
     SEARCH_TABS_CONTENT: 'search_tabs_content',
@@ -57,6 +58,16 @@ export const TOOL_NAMES = {
 };
 
 export const TOOL_SCHEMAS: Tool[] = [
+  {
+    name: TOOL_NAMES.BROWSER.HEALTH,
+    description:
+      'Return extension/bridge health metadata, schema hash, tool count, extension ID, and current browser tab/window counts. Use this after upgrades to confirm the client is not using a stale tool list.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
   {
     name: TOOL_NAMES.BROWSER.GET_WINDOWS_AND_TABS,
     description: 'Get all currently open browser windows and tabs',
@@ -526,7 +537,7 @@ export const TOOL_SCHEMAS: Tool[] = [
   {
     name: TOOL_NAMES.BROWSER.CLIPBOARD,
     description:
-      'Read, write, copy, or paste text through the browser clipboard/page. Useful for paste-only fields, rich editors, and copying selected page text.',
+      'Read, write, copy, or paste text through the browser clipboard/page. Uses focused page clipboard APIs first when possible, then offscreen/fallback paths.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -534,7 +545,7 @@ export const TOOL_SCHEMAS: Tool[] = [
           type: 'string',
           enum: ['read_text', 'write_text', 'paste_text', 'copy_selection'],
           description:
-            'read_text reads the clipboard, write_text writes text, paste_text inserts text into a page target, copy_selection copies selected/target text.',
+            'read_text reads the clipboard, write_text writes text, paste_text inserts text into a page target, copy_selection returns selected/target text and marks partialSuccess if system clipboard write is blocked.',
         },
         text: {
           type: 'string',
@@ -1789,6 +1800,11 @@ export const TOOL_SCHEMAS: Tool[] = [
         consoleLimit: {
           type: 'number',
           description: 'Maximum number of console messages to return (default: 20, max: 200).',
+        },
+        includeExtensionConsole: {
+          type: 'boolean',
+          description:
+            'Include chrome-extension:// / moz-extension:// console entries. Defaults to false so page-origin evidence is shown first.',
         },
         clearConsole: {
           type: 'boolean',
