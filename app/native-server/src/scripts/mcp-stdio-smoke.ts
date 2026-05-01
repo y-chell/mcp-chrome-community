@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import http, { type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
+import { resolvePreferredNodeExecPath } from './utils';
 
 type JsonRpcMessage = {
   jsonrpc?: string;
@@ -17,13 +18,21 @@ type SmokeOptions = {
   timeoutMs: number;
   callHealth: boolean;
   realBrowser: boolean;
+  verbose: boolean;
   requiredTools: string[];
 };
+
+let verboseLogging = false;
+
+function logProgress(message: string) {
+  if (verboseLogging) console.error(`[stdio-smoke] ${message}`);
+}
 
 const DEFAULT_REQUIRED_TOOLS = [
   'chrome_health',
   'chrome_navigate',
   'chrome_read_page',
+  'chrome_computer',
   'chrome_fill_or_select',
   'chrome_click_element',
   'chrome_javascript',
@@ -33,6 +42,7 @@ const DEFAULT_REQUIRED_TOOLS = [
   'chrome_wait_for_tab',
   'chrome_screenshot',
   'chrome_close_tabs',
+  'chrome_tab_group',
 ];
 
 function parseArgs(argv: string[]): SmokeOptions {
@@ -42,6 +52,7 @@ function parseArgs(argv: string[]): SmokeOptions {
     timeoutMs: 10000,
     callHealth: false,
     realBrowser: false,
+    verbose: false,
     requiredTools: [...DEFAULT_REQUIRED_TOOLS],
   };
 
@@ -62,6 +73,9 @@ function parseArgs(argv: string[]): SmokeOptions {
     } else if (arg === '--real-browser') {
       options.realBrowser = true;
       options.callHealth = true;
+      options.verbose = true;
+    } else if (arg === '--verbose') {
+      options.verbose = true;
     } else if (arg === '--require-tools') {
       const value = argv[index + 1];
       if (!value) throw new Error('--require-tools requires a comma-separated list');
@@ -89,7 +103,8 @@ Options:
   --timeout-ms <ms>        Per-request timeout. Default: 10000.
   --require-tools <list>   Comma-separated tool names required in tools/list.
   --call-health            Also call chrome_health through the real extension/native bridge.
-  --real-browser           Run a reversible real-browser fixture flow through MCP tools.
+  --real-browser           Run a reversible real-browser fixture flow through MCP tools. Implies --verbose.
+  --verbose                Print progress logs to stderr.
   -h, --help               Show this help.
 `);
 }
@@ -110,7 +125,8 @@ class StdioMcpClient {
   stderr = '';
 
   constructor(serverPath: string) {
-    this.child = spawn(process.execPath, [serverPath], {
+    const nodeExecPath = resolvePreferredNodeExecPath(process.execPath);
+    this.child = spawn(nodeExecPath, [serverPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -122,6 +138,14 @@ class StdioMcpClient {
 
     this.child.stderr.on('data', (chunk: Buffer) => {
       this.stderr += chunk.toString('utf8');
+    });
+
+    this.child.on('error', (error) => {
+      for (const pending of this.pending.values()) {
+        clearTimeout(pending.timeout);
+        pending.reject(error);
+      }
+      this.pending.clear();
     });
 
     this.child.on('exit', (code, signal) => {
@@ -163,7 +187,12 @@ class StdioMcpClient {
   }
 
   close() {
-    this.child.kill();
+    if (this.child.killed || this.child.exitCode !== null) return;
+    try {
+      this.child.kill();
+    } catch {
+      // Best effort cleanup. Preserve the real smoke failure instead of masking it.
+    }
   }
 
   private write(message: JsonRpcMessage) {
@@ -219,12 +248,15 @@ async function callMcpTool(
   args: Record<string, unknown>,
   timeoutMs: number,
 ): Promise<any> {
+  logProgress(`call ${name}`);
   const response = await client.request('tools/call', { name, arguments: args }, timeoutMs);
   assertNoRpcError(response, name);
   if (response.result?.isError) {
     throw new Error(`${name} returned isError: ${JSON.stringify(response.result)}`);
   }
-  return parseToolText(response);
+  const parsed = parseToolText(response);
+  logProgress(`ok ${name}`);
+  return parsed;
 }
 
 function createFixtureServer(): Promise<{
@@ -241,11 +273,36 @@ function createFixtureServer(): Promise<{
     label, button, textarea, input, [contenteditable] { display: block; margin: 12px 0; }
     textarea, input, [contenteditable] { width: 100%; box-sizing: border-box; padding: 8px; }
     [contenteditable] { min-height: 48px; border: 1px solid #888; }
+    .row { display: flex; align-items: center; gap: 16px; margin: 12px 0; }
+    #hover-target, #drag-source, #drop-target {
+      width: 160px;
+      min-height: 48px;
+      border: 1px solid #555;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+    }
+    #hover-target { background: #eef6ff; }
+    #hover-target.hovered { background: #c7e7ff; }
+    #drag-source { background: #fff0c2; cursor: grab; }
+    #drop-target { background: #f4f4f5; border-style: dashed; }
+    #drop-target.over { background: #dcfce7; border-style: solid; }
   </style>
 </head>
 <body>
   <h1>MCP Chrome Real Browser Fixture</h1>
   <p id="status">ready</p>
+  <div class="row">
+    <div id="hover-target">Hover target</div>
+    <span id="hover-status">hover pending</span>
+  </div>
+  <div class="row" id="drag-row">
+    <div id="drag-source">Drag source</div>
+    <div id="drop-target">Drop target</div>
+    <span id="drag-status">drag pending</span>
+  </div>
   <label>Name <input id="name" value="" placeholder="name" /></label>
   <label>Message <textarea id="message" rows="3"></textarea></label>
   <div id="editor" contenteditable="true">editable start</div>
@@ -256,6 +313,50 @@ function createFixtureServer(): Promise<{
   <a id="new-tab-link" href="/new-tab.html" target="_blank">Open new tab</a>
   <script>
     const status = document.querySelector('#status');
+    const hoverTarget = document.querySelector('#hover-target');
+    const hoverStatus = document.querySelector('#hover-status');
+    const dragSource = document.querySelector('#drag-source');
+    const dropTarget = document.querySelector('#drop-target');
+    const dragStatus = document.querySelector('#drag-status');
+    let dragging = false;
+
+    const markHovered = () => {
+      hoverTarget.classList.add('hovered');
+      hoverTarget.dataset.hovered = 'true';
+      hoverStatus.textContent = 'hovered';
+    };
+    hoverTarget.addEventListener('mouseenter', markHovered);
+    hoverTarget.addEventListener('mousemove', markHovered);
+
+    dragSource.addEventListener('mousedown', (event) => {
+      dragging = true;
+      dragSource.dataset.dragging = 'true';
+      dragStatus.textContent = 'dragging';
+      event.preventDefault();
+    });
+    document.addEventListener('mousemove', (event) => {
+      if (!dragging) return;
+      const target = document.elementFromPoint(event.clientX, event.clientY);
+      const overDropTarget = target === dropTarget || dropTarget.contains(target);
+      dropTarget.classList.toggle('over', overDropTarget);
+      if (overDropTarget) dragStatus.textContent = 'drag over';
+    });
+    document.addEventListener('mouseup', (event) => {
+      if (!dragging) return;
+      dragging = false;
+      dragSource.dataset.dragging = 'false';
+      const target = document.elementFromPoint(event.clientX, event.clientY);
+      const dropped = target === dropTarget || dropTarget.contains(target);
+      dropTarget.classList.toggle('over', dropped);
+      if (dropped) {
+        dropTarget.dataset.dropped = 'true';
+        dropTarget.textContent = 'Dropped';
+        dragStatus.textContent = 'drag dropped';
+      } else {
+        dragStatus.textContent = 'drag missed';
+      }
+    });
+
     document.querySelector('#async-button').addEventListener('click', () => {
       status.textContent = 'waiting';
       setTimeout(() => { status.textContent = 'async done'; }, 150);
@@ -306,6 +407,7 @@ async function runRealBrowserSmoke(
   const { server, baseUrl } = await createFixtureServer();
   const openedTabIds = new Set<number>();
   let originalClipboard: string | null = null;
+  let createdGroupId: number | null = null;
 
   try {
     const startUrl = `${baseUrl}/index.html`;
@@ -323,6 +425,45 @@ async function runRealBrowserSmoke(
       timeoutMs,
     );
     await callMcpTool(client, 'chrome_read_page', { tabId, depth: 6 }, timeoutMs);
+
+    const hoverResult = await callMcpTool(
+      client,
+      'chrome_computer',
+      { tabId, action: 'hover', selector: '#hover-target' },
+      timeoutMs,
+    );
+    if (!hoverResult?.success) {
+      throw new Error(`Hover action failed: ${JSON.stringify(hoverResult)}`);
+    }
+    await callMcpTool(
+      client,
+      'chrome_wait_for',
+      { tabId, condition: { kind: 'text', text: 'hovered' } },
+      timeoutMs,
+    );
+
+    const dragResult = await callMcpTool(
+      client,
+      'chrome_computer',
+      {
+        tabId,
+        action: 'left_click_drag',
+        startSelector: '#drag-source',
+        endSelector: '#drop-target',
+        dragSteps: 8,
+        dragDurationMs: 160,
+      },
+      timeoutMs,
+    );
+    if (!dragResult?.success) {
+      throw new Error(`Drag action failed: ${JSON.stringify(dragResult)}`);
+    }
+    await callMcpTool(
+      client,
+      'chrome_wait_for',
+      { tabId, condition: { kind: 'text', text: 'drag dropped' } },
+      timeoutMs,
+    );
 
     await callMcpTool(
       client,
@@ -467,9 +608,63 @@ async function runRealBrowserSmoke(
     );
     if (typeof newTab?.tab?.tabId === 'number') openedTabIds.add(newTab.tab.tabId);
 
+    const newTabId = newTab?.tab?.tabId;
+    const groupTabIds =
+      typeof newTabId === 'number' && newTab?.tab?.windowId === navigate.windowId
+        ? [tabId, newTabId]
+        : [tabId];
+    const tabGroup = await callMcpTool(
+      client,
+      'chrome_tab_group',
+      {
+        action: 'create',
+        tabIds: groupTabIds,
+        title: 'stdio smoke',
+        color: 'blue',
+        collapsed: false,
+      },
+      timeoutMs,
+    );
+    createdGroupId = tabGroup?.group?.groupId ?? null;
+    if (!tabGroup?.success || typeof createdGroupId !== 'number') {
+      throw new Error(`Tab group create verification failed: ${JSON.stringify(tabGroup)}`);
+    }
+    const listedGroup = await callMcpTool(
+      client,
+      'chrome_tab_group',
+      { action: 'list', groupId: createdGroupId },
+      timeoutMs,
+    );
+    if (
+      !listedGroup?.success ||
+      listedGroup.groupCount !== 1 ||
+      listedGroup.groups?.[0]?.title !== 'stdio smoke'
+    ) {
+      throw new Error(`Tab group list verification failed: ${JSON.stringify(listedGroup)}`);
+    }
+    await callMcpTool(
+      client,
+      'chrome_tab_group',
+      { action: 'ungroup', groupId: createdGroupId },
+      timeoutMs,
+    );
+    createdGroupId = null;
+
     return {
       baseUrl,
       tabIds: Array.from(openedTabIds),
+      hover: {
+        coordinates: hoverResult.coordinates,
+      },
+      drag: {
+        start: dragResult.start,
+        end: dragResult.end,
+        dragSteps: dragResult.dragSteps,
+        dragDurationMs: dragResult.dragDurationMs,
+      },
+      tabGroup: {
+        groupedTabIds: groupTabIds,
+      },
       clipboardTransport: clipboardWrite.clipboardTransport,
       debugEvidence: {
         messageCount: evidence.console.messageCount,
@@ -482,6 +677,14 @@ async function runRealBrowserSmoke(
         client,
         'chrome_clipboard',
         { action: 'write_text', text: originalClipboard },
+        timeoutMs,
+      ).catch(() => undefined);
+    }
+    if (createdGroupId !== null) {
+      await callMcpTool(
+        client,
+        'chrome_tab_group',
+        { action: 'ungroup', groupId: createdGroupId },
         timeoutMs,
       ).catch(() => undefined);
     }
@@ -499,6 +702,7 @@ async function runRealBrowserSmoke(
 
 async function run() {
   const options = parseArgs(process.argv.slice(2));
+  verboseLogging = options.verbose;
   const client = new StdioMcpClient(options.serverPath);
 
   try {

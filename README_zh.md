@@ -436,13 +436,13 @@ https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
   - 验收方向：本地开发地址能直接跳转，不会被改成非法 hostname
   - 主要模块：`common.ts`、导航 URL helper、host permission / match pattern helper
 
-- [ ] `P1` 给每次发布补真实浏览器验收套件
+- [x] `P1` 给每次发布补真实浏览器验收套件
   - 这次手工验收覆盖了 `read_page`、`fill_form`、点击、等待、悬停、拖拽、截图、console 证据、新标签识别、标签组；这些应该变成发布前可重复跑的检查
   - 建议子任务：
-    1. 部分完成：`pnpm smoke:stdio -- --real-browser` 会启动内置本地 fixture，覆盖表单、异步更新、console 输出、新标签链接和剪贴板输入框；hover/拖拽覆盖后续再补
+    1. 已完成：`pnpm smoke:stdio -- --real-browser --verbose` 会启动内置本地 fixture，覆盖表单、异步更新、console 输出、新标签链接、剪贴板输入框、悬停、拖拽/放置和标签组检查
     2. 已完成：`pnpm smoke:stdio` 通过 built stdio MCP server 校验工具列表；`--call-health` 会验证真实浏览器扩展和 native bridge
     3. 已完成：真实浏览器 smoke 跑完会关闭创建的标签页、停止本地服务，并尽量恢复剪贴板内容
-    4. 已完成：smoke 命令输出精简 JSON，包含工具数量、health 元信息、创建的标签页 ID、剪贴板通道和 debug evidence 计数
+    4. 已完成：smoke 命令输出精简 JSON，包含工具数量、health 元信息、创建的标签页 ID、悬停/拖拽坐标、标签组覆盖、剪贴板通道和 debug evidence 计数
   - 验收方向：每个候选版本都能证明浏览器扩展、native bridge、stdio server、工具 schema 在真实浏览器里能一起工作
   - 主要模块：`app/native-server`、`app/chrome-extension/tests`、发布脚本
 

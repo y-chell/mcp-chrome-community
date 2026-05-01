@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Real-browser release acceptance coverage**: `pnpm smoke:stdio -- --real-browser --verbose` now exercises hover, drag/drop, and tab grouping in the local fixture flow, and reports the covered interaction metadata in its JSON output
+- **Release smoke gate**: the release workflow now runs `pnpm smoke:stdio` after building the native server, so published releases fail early if stdio tool discovery breaks
+
 ## [v1.0.8] - 2026-04-30
 
 ### Added

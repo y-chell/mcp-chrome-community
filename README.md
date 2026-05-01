@@ -442,13 +442,13 @@ The next community-fork milestone is not "add as many tools as possible". The pr
   - Acceptance direction: local dev URLs should navigate without being rewritten into invalid hostnames
   - Primary modules: `common.ts`, navigation URL helpers, host-permission / match-pattern helpers
 
-- [ ] `P1` Add a real-browser acceptance suite before every release
+- [x] `P1` Add a real-browser acceptance suite before every release
   - The v1.0.7 manual run covered `read_page`, `fill_form`, click, wait, hover, drag/drop, screenshots, console evidence, new-tab detection, and tab groups; these should become a repeatable release check
   - Suggested subtasks:
-    1. Partly done: `pnpm smoke:stdio -- --real-browser` starts an embedded local fixture with form, async update, console logging, new-tab link, and clipboard fields; hover/drag coverage can be added next
+    1. Done: `pnpm smoke:stdio -- --real-browser --verbose` starts an embedded local fixture with form, async update, console logging, new-tab link, clipboard fields, hover, drag/drop, and tab grouping checks
     2. Done: `pnpm smoke:stdio` checks the built stdio MCP server tool list; `--call-health` verifies the real browser extension/native bridge
     3. Done: the real-browser smoke closes created tabs, stops the local server, and restores clipboard content when possible
-    4. Done: the smoke command prints compact JSON with tool count, health metadata, created tab IDs, clipboard transport, and debug-evidence counts
+    4. Done: the smoke command prints compact JSON with tool count, health metadata, created tab IDs, hover/drag coordinates, tab-group coverage, clipboard transport, and debug-evidence counts
   - Acceptance direction: a release candidate should prove the browser extension, native bridge, stdio server, and published tool schemas work together in a real browser
   - Primary modules: `app/native-server`, `app/chrome-extension/tests`, release workflow scripts
 

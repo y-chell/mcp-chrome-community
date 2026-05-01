@@ -82,6 +82,9 @@ jobs:
       - name: Build native server
         run: pnpm build:native
 
+      - name: Run stdio smoke check
+        run: pnpm smoke:stdio
+
       - name: Build extension
         env:
           CHROME_EXTENSION_KEY: ${{ secrets.CHROME_EXTENSION_KEY }}
