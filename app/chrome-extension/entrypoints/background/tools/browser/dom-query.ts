@@ -79,6 +79,11 @@ abstract class DomQueryBaseTool extends BaseBrowserToolExecutor {
     return [{ frameId: 0 }];
   }
 
+  protected async getFrameDescriptor(tabId: number, frameId: number): Promise<FrameDescriptor> {
+    const frames = await this.getReadableFrames(tabId);
+    return frames.find((frame) => frame.frameId === frameId) || { frameId };
+  }
+
   protected async injectAccessibilityHelper(tabId: number, frameIds?: number[]): Promise<void> {
     await this.injectContentScript(
       tabId,
@@ -137,7 +142,7 @@ class QueryElementsTool extends DomQueryBaseTool {
 
       const frames =
         typeof rootFrameId === 'number'
-          ? [{ frameId: rootFrameId }]
+          ? [await this.getFrameDescriptor(tab.id, rootFrameId)]
           : await this.getReadableFrames(tab.id);
       const frameIds = frames.map((frame) => frame.frameId);
 
@@ -191,6 +196,7 @@ class QueryElementsTool extends DomQueryBaseTool {
               elements.push({
                 ...element,
                 frameId: frame.frameId,
+                frameUrl: frame.url,
               });
               if (elements.length >= limit) break;
             }
@@ -218,6 +224,10 @@ class QueryElementsTool extends DomQueryBaseTool {
         totalMatches,
         truncated,
         framesSearched: frameIds,
+        frames: frames.map((frame) => ({
+          frameId: frame.frameId,
+          url: frame.url,
+        })),
         matchedFrameIds: Array.from(matchedFrameIds),
         elements,
         errors,
@@ -271,7 +281,7 @@ class GetElementHtmlTool extends DomQueryBaseTool {
 
       const frames =
         typeof resolvedFrameId === 'number'
-          ? [{ frameId: resolvedFrameId }]
+          ? [await this.getFrameDescriptor(tab.id, resolvedFrameId)]
           : await this.getReadableFrames(tab.id);
       const frameIds = frames.map((frame) => frame.frameId);
 
@@ -335,6 +345,7 @@ class GetElementHtmlTool extends DomQueryBaseTool {
         tool: this.name,
         tabId: tab.id,
         frameId: match.frameId,
+        frameUrl: frames.find((frame) => frame.frameId === match.frameId)?.url,
         ref: match.element.ref,
         selector,
         selectorType: selector ? selectorType : undefined,

@@ -35,6 +35,13 @@ describe('screenshot output defaults', () => {
       download: vi.fn().mockResolvedValue(88),
       search: vi.fn().mockResolvedValue([{ id: 88, filename: 'C:\\Downloads\\shot.png' }]),
     };
+    (globalThis.chrome as any).debugger = {
+      ...(globalThis.chrome as any).debugger,
+      getTargets: vi.fn().mockResolvedValue([]),
+      attach: vi.fn().mockResolvedValue(undefined),
+      detach: vi.fn().mockResolvedValue(undefined),
+      sendCommand: vi.fn().mockResolvedValue({}),
+    };
 
     vi.spyOn(screenshotTool as any, 'injectContentScript').mockResolvedValue(undefined);
     vi.spyOn(screenshotTool as any, 'sendMessageToTab').mockImplementation(
@@ -138,6 +145,66 @@ describe('screenshot output defaults', () => {
       filename: expect.stringMatching(/^full-shot_/),
       fullPath: 'C:\\Downloads\\shot.png',
       base64Data: 'small',
+      captureKind: 'fullPage',
+    });
+  });
+
+  it('uses CDP for background full-page screenshots without custom sizing', async () => {
+    (chrome.debugger.sendCommand as any).mockImplementation(
+      async (
+        _target: chrome.debugger.Debuggee,
+        method: string,
+        params?: Record<string, unknown>,
+      ) => {
+        if (method === 'Page.getLayoutMetrics') {
+          return {
+            layoutViewport: { clientWidth: 1280, clientHeight: 720, pageX: 0, pageY: 0 },
+            visualViewport: { clientWidth: 1280, clientHeight: 720, pageX: 0, pageY: 0 },
+            contentSize: { width: 1280, height: 2400 },
+          };
+        }
+        if (method === 'Page.captureScreenshot') {
+          expect(params).toMatchObject({
+            format: 'png',
+            fromSurface: true,
+            captureBeyondViewport: true,
+            clip: {
+              x: 0,
+              y: 0,
+              width: 1280,
+              height: 2400,
+              scale: 1,
+            },
+          });
+          return { data: 'cdp-full' };
+        }
+        return {};
+      },
+    );
+
+    const result = await screenshotTool.execute({
+      background: true,
+      fullPage: true,
+      storeBase64: true,
+    } as any);
+
+    expect(result.isError).toBe(false);
+    expect((screenshotTool as any).injectContentScript).not.toHaveBeenCalled();
+    expect(chrome.tabs.captureVisibleTab).not.toHaveBeenCalled();
+    expect(compressImage).toHaveBeenCalledWith(
+      'data:image/png;base64,cdp-full',
+      expect.objectContaining({
+        format: 'image/jpeg',
+        maxWidth: 1280,
+        maxHeight: 2400,
+        quality: 0.72,
+      }),
+    );
+
+    expect(parseJsonResult(result)).toMatchObject({
+      success: true,
+      fileSaved: false,
+      captureEngine: 'cdp',
       captureKind: 'fullPage',
     });
   });

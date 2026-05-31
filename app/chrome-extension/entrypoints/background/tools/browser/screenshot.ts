@@ -74,6 +74,14 @@ interface ScreenshotPageDetails {
   currentScrollY: number;
 }
 
+interface CdpScreenshotResult {
+  dataUrl: string;
+  widthCss: number;
+  heightCss: number;
+  pageDetails: ScreenshotPageDetails;
+  truncated?: boolean;
+}
+
 const PAGE_DETAILS_REQUIRED_FIELDS: Array<keyof ScreenshotPageDetails> = [
   'totalWidth',
   'totalHeight',
@@ -137,6 +145,77 @@ class ScreenshotTool extends BaseBrowserToolExecutor {
     return Math.max(0.3, Math.min(quality, 0.95));
   }
 
+  private async captureWithCdp(
+    tabId: number,
+    args: ScreenshotToolParams,
+  ): Promise<CdpScreenshotResult> {
+    const { cdpSessionManager } = await import('@/utils/cdp-session-manager');
+
+    return await cdpSessionManager.withSession(tabId, 'screenshot', async () => {
+      const metrics: any = await cdpSessionManager.sendCommand(tabId, 'Page.getLayoutMetrics', {});
+      const layoutViewport = metrics?.layoutViewport || {};
+      const visualViewport = metrics?.visualViewport || {};
+      const contentSize = metrics?.contentSize || {};
+      const viewportWidth = Math.max(
+        1,
+        Math.round(layoutViewport.clientWidth || visualViewport.clientWidth || 800),
+      );
+      const viewportHeight = Math.max(
+        1,
+        Math.round(layoutViewport.clientHeight || visualViewport.clientHeight || 600),
+      );
+      const totalWidth = Math.max(1, Math.ceil(contentSize.width || viewportWidth));
+      const totalHeight = Math.max(1, Math.ceil(contentSize.height || viewportHeight));
+      const captureParams: Record<string, unknown> = {
+        format: 'png',
+        fromSurface: true,
+      };
+      let widthCss = viewportWidth;
+      let heightCss = viewportHeight;
+      let truncated = false;
+
+      if (args.fullPage === true) {
+        widthCss = totalWidth;
+        heightCss = Math.min(totalHeight, SCREENSHOT_CONSTANTS.MAX_CAPTURE_HEIGHT_PX);
+        truncated = totalHeight > heightCss;
+        captureParams.captureBeyondViewport = true;
+        captureParams.clip = {
+          x: 0,
+          y: 0,
+          width: widthCss,
+          height: heightCss,
+          scale: 1,
+        };
+      }
+
+      const shot: any = await cdpSessionManager.sendCommand(
+        tabId,
+        'Page.captureScreenshot',
+        captureParams,
+      );
+      const base64Data = typeof shot?.data === 'string' ? shot.data : '';
+      if (!base64Data) {
+        throw new Error('CDP Page.captureScreenshot returned empty data');
+      }
+
+      return {
+        dataUrl: `data:image/png;base64,${base64Data}`,
+        widthCss,
+        heightCss,
+        pageDetails: {
+          totalWidth,
+          totalHeight,
+          viewportWidth,
+          viewportHeight,
+          devicePixelRatio: 1,
+          currentScrollX: Math.round(visualViewport.pageX || layoutViewport.pageX || 0),
+          currentScrollY: Math.round(visualViewport.pageY || layoutViewport.pageY || 0),
+        },
+        truncated,
+      };
+    });
+  }
+
   /**
    * Execute screenshot operation
    */
@@ -173,45 +252,27 @@ class ScreenshotTool extends BaseBrowserToolExecutor {
 
     try {
       const background = args.background === true;
-      // CDP path: background=true with simple viewport capture (no fullPage, no selector)
-      const canUseCdpCapture = background && !fullPage && !selector;
+      const canUseCdpCapture =
+        background && !selector && (!fullPage || (!args.width && !args.height && !args.maxHeight));
 
-      // === Path 1: CDP viewport capture (no content script needed) ===
+      // === Path 1: CDP capture (no content script, works on background tabs) ===
       if (canUseCdpCapture) {
         try {
-          const tabId = tab.id!;
-          const { cdpSessionManager } = await import('@/utils/cdp-session-manager');
-          await cdpSessionManager.withSession(tabId, 'screenshot', async () => {
-            const metrics: any = await cdpSessionManager.sendCommand(
-              tabId,
-              'Page.getLayoutMetrics',
-              {},
-            );
-            const viewport = metrics?.layoutViewport ||
-              metrics?.visualViewport || {
-                clientWidth: 800,
-                clientHeight: 600,
-                pageX: 0,
-                pageY: 0,
-              };
-            const shot: any = await cdpSessionManager.sendCommand(tabId, 'Page.captureScreenshot', {
-              format: 'png',
-            });
-            const base64Data = typeof shot?.data === 'string' ? shot.data : '';
-            if (!base64Data) {
-              throw new Error('CDP Page.captureScreenshot returned empty data');
-            }
-            finalImageDataUrl = `data:image/png;base64,${base64Data}`;
-            finalImageWidthCss = Math.round(viewport.clientWidth || 800);
-            finalImageHeightCss = Math.round(viewport.clientHeight || 600);
-          });
+          const cdpCapture = await this.captureWithCdp(tab.id!, args);
+          finalImageDataUrl = cdpCapture.dataUrl;
+          finalImageWidthCss = cdpCapture.widthCss;
+          finalImageHeightCss = cdpCapture.heightCss;
+          pageDetails = cdpCapture.pageDetails;
+          results.captureEngine = 'cdp';
+          if (cdpCapture.truncated) results.truncated = true;
         } catch (e) {
-          console.warn('CDP viewport capture failed, falling back to helper path:', e);
+          console.warn('CDP screenshot capture failed, falling back to helper path:', e);
         }
       }
 
       // === Path 2: Helper-assisted capture (requires content script) ===
       if (!finalImageDataUrl) {
+        results.captureEngine = 'helper';
         // Always inject helper when we need pageDetails
         await this.injectContentScript(tab.id!, ['inject-scripts/screenshot-helper.js']);
         await new Promise((resolve) => setTimeout(resolve, SCREENSHOT_CONSTANTS.SCRIPT_INIT_DELAY));

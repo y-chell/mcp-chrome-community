@@ -25,6 +25,9 @@ mcp-chrome-community 是一个基于chrome插件的 **模型上下文协议 (MCP
 ## ✨ 功能亮点补充
 
 - **让Claude Code/Codex也能使用的可视化编辑器**, 更多详情请看: [VisualEditor](docs/VisualEditor_zh.md)
+- **真实浏览器 Agent 工具集**：已支持页面读取、元素查询、JS 执行、CDP 驱动输入、截图、网络抓包、console 调试证据、上传下载状态查询等能力。
+- **更稳的多标签页和多窗口控制**：支持 frame 枚举、新标签等待、标签组管理、后台截图、同一客户端复用上次确认过的 tab，以及 `chrome_health` 版本检查。
+- **更适合 Claude Code / Codex 使用**：提供 `wait_for` / `assert`、`read_page`、`query_elements`、`computer`、`clipboard`、`record/replay` 等工具，减少临时写 JS 和反复试错。
 
 ## ✨ 核心特性
 
@@ -35,8 +38,18 @@ mcp-chrome-community 是一个基于chrome插件的 **模型上下文协议 (MCP
 - 🏎 **跨标签页** 跨标签页的上下文
 - 🧠 **语义搜索**：内置向量数据库和本地小模型，智能发现浏览器标签页内容
 - 🔍 **智能内容分析**：AI 驱动的文本提取和相似度匹配
-- 🌐 **25+ 工具**：支持截图、网络监控、交互操作、书签管理、浏览历史等25种以上工具
+- 🌐 **35+ 工具**：支持截图、网络监控、交互操作、书签管理、浏览历史、等待断言、调试证据、上传下载、标签组和录制回放等工具
 - 🚀 **SIMD 加速 AI**：自定义 WebAssembly SIMD 优化，向量运算速度提升 4-8 倍
+
+## ✅ 当前已具备的关键能力
+
+- 页面读取：`chrome_scan_compact`、`chrome_read_page`、`chrome_query_elements`、`chrome_get_element_html`、`chrome_get_web_content`，支持紧凑扫描、ref、frameId、frameUrl、局部 DOM、可见元素、隐藏元素和 open Shadow DOM 查询。
+- 页面操作：`chrome_click_element`、`chrome_fill_or_select`、`chrome_keyboard`、`chrome_computer`，支持坐标、selector、ref、拖拽、滚动、输入、等待、截图辅助操作。
+- 等待和确认：`chrome_wait_for`、`chrome_assert`、`chrome_wait_for_tab`，覆盖元素、文本、URL、标题、JS 条件、网络请求、网络空闲和下载。
+- 调试排查：`chrome_console`、`chrome_collect_debug_evidence`、`chrome_javascript`、`chrome_screenshot`、`chrome_cdp_command`、`chrome_cdp_batch`，能拿到页面日志、运行时异常、截图、最近网络证据，也能直接跑 CDP。
+- 网络和文件：`chrome_network_capture`、`chrome_network_request`、`chrome_upload_file`、`chrome_get_upload_status`、`chrome_handle_download`，支持抓包、请求重放、上传状态、拖拽上传和下载状态查询。
+- 浏览器数据：`chrome_history`、`chrome_bookmark_*`、`chrome_tab_group`、`chrome_clipboard`，覆盖历史记录、书签、标签组和剪贴板。
+- 版本和真实浏览器测试：`chrome_health` 能确认扩展版本、bridge 版本、schema hash、工具数量和当前浏览器状态；真实浏览器测试会覆盖表单、异步更新、console、新标签、剪贴板、拖拽、标签组等场景。
 
 ## 🆚 与同类项目对比
 
@@ -171,51 +184,81 @@ mcp-chrome-community-bridge/dist/mcp/mcp-server-stdio.js
 完整工具列表：[完整工具列表](docs/TOOLS_zh.md)
 
 <details>
-<summary><strong>📊 浏览器管理 (6个工具)</strong></summary>
+<summary><strong>📊 浏览器和标签页</strong></summary>
 
 - `get_windows_and_tabs` - 列出所有浏览器窗口和标签页
-- `chrome_navigate` - 导航到 URL 并控制视口
+- `chrome_health` - 查看扩展、bridge、工具数量和当前浏览器状态
+- `chrome_list_frames` - 列出当前 tab 里的 iframe
+- `chrome_wait_for_tab` - 等待新 tab 打开或已有 tab 匹配
+- `chrome_navigate` - 打开 URL、刷新、前进后退，也可创建新窗口
 - `chrome_switch_tab` - 切换当前显示的标签页
-- `chrome_close_tabs` - 关闭特定标签页或窗口
-- `chrome_go_back_or_forward` - 浏览器导航控制
-- `chrome_inject_script` - 向网页注入内容脚本
-- `chrome_send_command_to_inject_script` - 向已注入的内容脚本发送指令
+- `chrome_close_tabs` - 关闭 tab
+- `chrome_tab_group` - 创建、命名、折叠、移动或取消 Chrome 标签组
 </details>
 
 <details>
-<summary><strong>📸 截图和视觉 (1个工具)</strong></summary>
+<summary><strong>🔍 页面读取和定位</strong></summary>
 
-- `chrome_screenshot` - 高级截图捕获，支持元素定位、全页面和自定义尺寸
+- `chrome_read_page` - 读取当前页面可见内容和交互元素
+- `chrome_scan_compact` - 低输出扫描页面，返回标题、表单、按钮、输入框、弹窗、iframe 和重要文本块
+- `chrome_query_elements` - 用 CSS/XPath 查元素，支持隐藏元素和 frame
+- `chrome_get_element_html` - 获取指定元素 HTML
+- `chrome_get_web_content` - 提取页面文本或 HTML
+- `chrome_get_interactive_elements` - 获取页面可交互元素
+- `search_tabs_content` - 在已打开 tab 内容里做语义搜索
 </details>
 
 <details>
-<summary><strong>🌐 网络监控 (4个工具)</strong></summary>
+<summary><strong>🎯 页面操作</strong></summary>
 
-- `chrome_network_capture_start/stop` - webRequest API 网络捕获
-- `chrome_network_debugger_start/stop` - Debugger API 包含响应体
-- `chrome_network_request` - 发送自定义 HTTP 请求
+- `chrome_click_element` - 点击元素，支持 selector、XPath、ref 和坐标
+- `chrome_fill_or_select` - 填输入框、textarea、select、checkbox、radio
+- `chrome_keyboard` - 发送键盘输入和快捷键
+- `chrome_computer` - 鼠标、键盘、滚动、拖拽、截图等综合操作
+- `chrome_clipboard` - 读写剪贴板、粘贴文本、复制选中内容
+- `chrome_request_element_selection` - 找不到元素时，让用户在页面上手动点选
 </details>
 
 <details>
-<summary><strong>🔍 内容分析 (5个工具)</strong></summary>
+<summary><strong>⏱️ 等待和断言</strong></summary>
 
-- `search_tabs_content` - AI 驱动的浏览器标签页语义搜索
-- `chrome_get_web_content` - 从页面提取 HTML/文本内容
-- `chrome_get_interactive_elements` - 查找可点击元素
-- `chrome_console` - 捕获和获取浏览器标签页的控制台输出
-- `chrome_collect_debug_evidence` - 打包截图、console/runtime 报错和最近网络证据
+- `chrome_wait_for` - 等元素、文本、URL、标题、JS 条件、网络请求、网络空闲或下载
+- `chrome_assert` - 用同样的条件做明确检查，失败时直接返回原因
 </details>
 
 <details>
-<summary><strong>🎯 交互操作 (3个工具)</strong></summary>
+<summary><strong>📸 截图、录制和性能</strong></summary>
 
-- `chrome_click_element` - 使用 CSS 选择器点击元素
-- `chrome_fill_or_select` - 填充表单和选择选项
-- `chrome_keyboard` - 模拟键盘输入和快捷键
+- `chrome_screenshot` - 截图，支持全页面、元素截图、base64 输出和保存文件
+- `chrome_gif_recorder` - 录制 tab 操作并导出 GIF
+- `performance_start_trace` - 开始性能 trace
+- `performance_stop_trace` - 停止性能 trace
+- `performance_analyze_insight` - 返回 trace 的轻量分析结果
 </details>
 
 <details>
-<summary><strong>📚 数据管理 (5个工具)</strong></summary>
+<summary><strong>🌐 网络、文件和弹窗</strong></summary>
+
+- `chrome_network_capture` - 抓取请求，可选响应体
+- `chrome_network_request` - 用浏览器上下文发送 HTTP 请求
+- `chrome_upload_file` - 给页面 file input 上传本地文件、URL 文件或 base64 文件
+- `chrome_get_upload_status` - 查询上传选择状态
+- `chrome_handle_download` - 等待、查询或列出下载
+- `chrome_handle_dialog` - 处理 alert、confirm、prompt
+</details>
+
+<details>
+<summary><strong>🧰 调试和脚本</strong></summary>
+
+- `chrome_javascript` - 在页面里执行 JS，支持返回 JSON 结果
+- `chrome_cdp_command` - 发送单条原始 Chrome DevTools Protocol 命令
+- `chrome_cdp_batch` - 一次发送多条 CDP 命令，减少来回调用
+- `chrome_console` - 读取 console 日志和运行时异常
+- `chrome_collect_debug_evidence` - 一次拿到页面内容、截图、console、异常和最近网络证据
+</details>
+
+<details>
+<summary><strong>📚 浏览器数据</strong></summary>
 
 - `chrome_history` - 搜索浏览器历史记录，支持时间过滤
 - `chrome_bookmark_search` - 按关键词查找书签
@@ -302,176 +345,27 @@ https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
 
 我们欢迎贡献！请查看 [CONTRIBUTING_zh.md](docs/CONTRIBUTING_zh.md) 了解详细指南。
 
-## 🚧 未来发展路线图
+## 🚧 后续优化计划
 
-社区版接下来的重点不是盲目继续加工具，而是先把现有能力做稳、做快、做强。
+GenericAgent 里适合浏览器自动化的部分已经先合进来了：紧凑页面扫描、原始 CDP 命令、批量 CDP、frame-aware DOM 查询、后台 CDP 截图、复杂上传兼容，以及更明确的工具说明。
 
-### 2026-04-25 v1.1 优先级
+后面还剩这些：
 
-- [x] `P0` iframe / Shadow DOM / ref 定位稳定化
-  - 先解决“元素明明在页面里，但工具总说 not found”这类问题
-  - 关联问题：`#172`、`#126`
-  - 主要模块：`app/chrome-extension/entrypoints/background/tools/browser/read-page.ts`、`interaction.ts`、`computer.ts`、`inject-scripts/accessibility-tree-helper.js`、`click-helper.js`、`fill-helper.js`
+- `chrome_javascript` 继续补 CDP execution context，减少跨域 iframe 场景里的手工 CDP 调用。
+- canvas/img 场景支持直接导出 base64，减少截图裁剪误差。
+- 录制与回放从“能跑”补到“稳定可复用”。
+- 自动任务从“单次执行”补到“可发布、可调试、可定时”。
+- 增强浏览器支持：先把 Chrome / Edge 稳住，再评估 Firefox。
+- 身份认证和工具权限分级。
 
-- [x] `P0` 动态页面等待与断言
-  - 补齐“等文本出现/消失”“等元素可点击”“等请求完成”“等下载完成”这类高频动作，减少 AI 乱点和抢跑
-  - 关联问题：`#93`、`#200`、`#43`
-  - 主要模块：`computer.ts`、`common.ts`、`download.ts`、`network-capture.ts`、`app/chrome-extension/entrypoints/background/record-replay/engine/policies/wait.ts`
+### 最后再考虑 Windows 桌面级控制
 
-- [x] `P1` 截图输出瘦身和局部截图优先
-  - 优先解决截图太大、token 爆掉、还得手动保存这些问题
-  - 关联问题：`#163`、`#207`
-  - 主要模块：`screenshot.ts`、`packages/shared/src/tools.ts`、`app/chrome-extension/utils/image-utils.ts`
+这部分参考 GA 的 `ljqCtrl`，但建议独立成桌面工具组，不混进浏览器内工具。
 
-- [x] `P1` console / dialog / network 结果质量
-  - 把 `chrome_console` 的深层对象、DevTools 冲突、弹窗信息读取、网络抓包结果做得更稳
-  - 关联问题：`#215`、`#191`、`#201`
-  - 主要模块：`console.ts`、`console-buffer.ts`、`dialog.ts`、`javascript.ts`、`network-capture.ts`
-
-- [x] `P1` 多会话 / 多窗口 / 后台运行隔离
-  - 降低并发串线、窗口抢焦点、工具失控这类问题
-  - 这轮补强后的实际行为：每个 Streamable HTTP / SSE MCP 会话都会把会话上下文传到扩展侧；调用方不传 `tabId` / `windowId` 时，页签类工具会复用该会话上一次确认过的 tab/window；同一会话或同一 tab 的调用会排队，避免互相插队执行
-  - CDP debugger owner 现在会正确统计同一 owner 的重复 attach，并在 Chrome 主动 detach 时清理过期状态
-  - 关联问题：`#152`、`#178`、`#162`、`#141`
-  - 主要模块：`app/native-server/src/mcp/mcp-server.ts`、`mcp-server-stdio.ts`、`app/chrome-extension/entrypoints/background/native-host.ts`、`computer.ts`、`common.ts`、`app/chrome-extension/utils/cdp-session-manager.ts`
-
-- [x] `P2` 更强的页面操作能力
-  - 在现有 `chrome_computer`、`chrome_upload_file`、`chrome_handle_download`、`record_replay_flow_run` 基础上，继续补 `hover`、拖放、剪贴板、标签组、复杂表单和流程复用
-  - 这轮补完后的实际行为：`chrome_clipboard` 支持读取、写入、粘贴、复制选中文本；`chrome_tab_group` 可以管理 Chrome 标签组；`chrome_computer` 支持按 selector 拖拽并插入中间移动点；`fill_form` 支持 ref / selector 混合填写并返回每个字段的结果
-  - 关联问题：`#141`、`#171`、`#205`
-  - 主要模块：`computer.ts`、`file-upload.ts`、`download.ts`、`bookmark.ts`、`history.ts`、`app/chrome-extension/entrypoints/background/tools/record-replay.ts`
-
-### 2026-04-28 Agent 使用体验补强清单
-
-> 下面这些点里，有些底层能力已经存在，但从 Claude Code / Codex 这类 agent 的实际使用体验来看，还需要继续产品化、稳定化，而不是只停留在“能调用”。
-
-- [x] `P1` `chrome_network_capture` 生命周期与匹配规则稳定化
-  - 已观察到 `start` 成功但 `stop` 报无活动会话，或返回 `0 requests captured` 的情况；需要把 URL pattern、会话绑定、导航时序和结果回传做稳
-  - 优先补齐“等某个请求出现 / 完成”的 agent 友好语义，而不只是底层抓包入口
-  - 这轮补强后的实际行为：精确 `https://...` URL 会先绑定 capture 再导航，通配符 pattern 会附着到已有 tab，`includeStatic=false` 仍会保留 XHR/fetch 触发的 `text/html` 响应，只过滤顶层文档和静态资源
-  - 建议子任务：
-    1. 统一 URL pattern 规则，明确精确 URL、通配符、当前 tab 默认值的行为
-    2. 把 capture 生命周期绑定到 tab / frame / navigation，避免 `start` 后状态丢失
-    3. 返回更稳定的统计字段，如 matched requests、ignored requests、stop reason
-    4. 为 start → navigate → stop、连续 start/stop、超时 stop、无请求 stop 补回归测试
-  - 验收方向：在标准 `https` 页面上，`start` → 导航 → `stop` 能稳定拿到请求列表；不再出现随机“无活动会话”
-  - 主要模块：`network-capture.ts`、`common.ts`、`app/chrome-extension/utils/cdp-session-manager.ts`
-
-- [x] `P1` 等待 / 断言能力从底层策略升级为一等工具
-  - 现有等待能力更多分散在内部策略或复合工具里，仍建议补明确的 `wait_for` / `assert` 风格入口，覆盖元素出现、文本变化、URL 变化、网络空闲等高频条件
-  - 目标不是“理论上能通过 JS 拼出来”，而是让 agent 能稳定、低成本地使用
-  - 建议子任务：
-    1. 定义统一 condition schema：element、text、url、title、js predicate、network idle
-    2. 统一超时、轮询间隔、失败消息和调试上下文返回格式
-    3. 让 `chrome_computer`、录制回放、下载等待共用同一套等待内核
-    4. 为动态列表、懒加载、按钮启用状态、重定向页面补集成用例
-  - 验收方向：常见“等元素出现 / 等文本变化 / 等跳转完成”不再需要临时写 JS 或手动重试
-  - 主要模块：`computer.ts`、`common.ts`、`app/chrome-extension/entrypoints/background/record-replay/engine/policies/wait.ts`
-
-- [x] `P1` 元素查询与 DOM 可观测性补强
-  - `read_page` 已能解决大部分可见元素读取，但对批量元素查询、真实 DOM/属性、hidden 元素、局部 HTML 片段等场景还不够直接
-  - 可考虑补 `query_elements`、`get_element_html`、`get_dom_snapshot` 这类更结构化的工具
-  - 建议子任务：
-    1. 设计批量元素查询输出，至少包含 ref、selector hint、text、role、attributes、visible、enabled
-    2. 增加局部 DOM / outerHTML 读取，覆盖 hidden 元素和局部 subtree
-    3. 统一 `read_page` 与 DOM 查询工具的 ref 语义，减少跨工具 ref 失配
-    4. 为表格、列表、复杂表单、Shadow DOM 场景补回归样例
-  - 验收方向：agent 能稳定拿到“一个元素列表”或“某个节点的真实 DOM 片段”，而不是只能读整页摘要
-  - 主要模块：`read-page.ts`、`inject-scripts/accessibility-tree-helper.js`、`javascript.ts`
-
-- [x] `P1` 下载 / 上传闭环状态查询
-  - 现在已有下载、上传相关工具，但 agent 侧仍缺“是否完成、文件在哪、失败原因是什么”的稳定状态确认
-  - 重点补齐下载列表、最终保存路径、上传进度 / 失败原因等结果语义
-  - 建议子任务：
-    1. 补下载状态查询：pending / in_progress / completed / failed、文件名、路径、大小、mime type
-    2. 补上传状态查询：目标元素、开始时间、完成状态、失败原因
-    3. 明确浏览器原生弹窗、系统文件选择器、后台下载的兼容边界
-    4. 为单文件、多文件、重名文件、取消上传下载补测试覆盖
-  - 验收方向：agent 完成上传或下载后，能直接知道结果状态和文件去向，不需要靠猜测或额外脚本探测
-  - 主要模块：`download.ts`、`file-upload.ts`、`common.ts`
-
-- [x] `P2` iframe / 多标签页 / 多窗口的工作流级编排
-  - 当前基础能力已可用，但复杂工作流仍需要更明确的 frame 枚举 / 切换、标签页等待、新标签识别、跨窗口状态隔离能力
-  - 目标是降低 agent 在支付页、登录页、嵌入式编辑器、多步跳转场景中的不确定性
-  - 建议子任务：
-    1. 补 frame 枚举 / 切换工具，返回 frame 层级、URL、title、可交互状态
-    2. 补新标签等待、目标标签识别、标签关闭后的上下文恢复
-    3. 明确多窗口并发时的 active tab 选择和后台运行边界
-    4. 为 OAuth、支付页、内嵌编辑器、多步重定向场景补集成验证
-  - 验收方向：跨 iframe / 新标签 / 新窗口的多步流程能稳定跑通，不容易串到错误上下文
-  - 主要模块：`interaction.ts`、`computer.ts`、`app/native-server/src/mcp/mcp-server.ts`
-
-- [x] `P2` console / runtime error / 调试证据增强
-  - 除了能执行 JS，还需要更直接的 console logs、runtime errors、失败快照、关键上下文打包，方便 agent 自诊断页面异常
-  - 建议子任务：
-    1. 增加 recent logs、errors only、clear logs、runtime exception 摘要
-    2. 统一失败时的调试证据包：截图、URL、title、最近 console、关键请求摘要
-    3. 处理深对象序列化、循环引用、DevTools 冲突和输出截断问题
-    4. 为前端报错、资源加载失败、跨域异常补调试样例
-  - 验收方向：agent 遇到“页面没反应”时，可以直接拿到足够诊断证据，而不是只能再手写 JS 探查
-  - 主要模块：`console.ts`、`console-buffer.ts`、`javascript.ts`、`screenshot.ts`
-
-### 2026-04-29 真实浏览器验收后续计划
-
-> v1.0.7 已经用真实 Chrome 配置和临时本地页面跑过一轮验收。大部分页面操作确实更快、更适合 agent 使用，但还发现了几处真实环境里的问题，下一步优先修这些。
-
-- [x] `P0` 把剪贴板能力修到真实浏览器里稳定可用
-  - 发现的问题：`chrome_clipboard paste_text` 可以把文本插入页面输入框，但直接 `read_text`、`write_text`、`copy_selection` 会因为 offscreen document 没有焦点或 `document.execCommand("copy")` 返回 false 而失败
-  - 这轮处理：`read_text` / `write_text` 会优先走已聚焦页面的 Clipboard API；offscreen 读写在 `navigator.clipboard` 被拦住时也会退回 `execCommand`；`copy_selection` 在系统剪贴板写入失败时仍返回提取到的文本，并标记 `partialSuccess` / `clipboardWritten`
-  - 建议子任务：
-    1. 已完成：重做剪贴板通道选择：有页面上下文时优先走已聚焦页面执行，只有浏览器焦点规则允许时再走 offscreen
-    2. 已完成：`copy_selection` 即使写系统剪贴板失败，也会返回已提取到的文本，并明确标记为部分成功
-    3. 已完成：补 page / offscreen fallback / selector 复制粘贴的回归用例；更完整的真实浏览器覆盖放到下面的验收套件
-    4. 已完成：文档里写清楚浏览器权限和焦点限制，方便 agent 判断该用 `paste_text` 还是系统剪贴板读写
-  - 验收方向：MCP 客户端直接调用 `read_text`、`write_text`、`paste_text`、`copy_selection` 时，不需要用户手动点页面也能有稳定结果
-  - 主要模块：`clipboard.ts`、`offscreen-manager.ts`、`entrypoints/offscreen/main.ts`、`wxt.config.ts`
-
-- [x] `P0` 修复本地 URL 和特殊 URL 的跳转处理
-  - 发现的问题：跳转 `http://127.0.0.1:8765/...` 时被改成了类似 `http://www.127.0.0.1:8765/*` 的非法 pattern；换成 `localhost` 正常
-  - 这轮处理：URL pattern 生成不会再给 `localhost`、IPv4、IPv6 补 `www`；`chrome://` 等特殊地址不再生成非法 pattern，而是扫描现有标签页再决定是否打开
-  - 建议子任务：
-    1. 已完成：导航和权限 pattern 生成时保留 IP、`localhost`、端口号和已合法的绝对 URL，不再乱补 `www`
-    2. 已完成：明确 `file://`、`data:`、`chrome://`、扩展页这些地址的支持边界：已有标签页可识别，是否能新开仍以 Chrome 自身限制为准
-    3. 已完成：补 `localhost`、`127.0.0.1`、IPv6 loopback、自定义端口、query、hash 的回归测试
-  - 验收方向：本地开发地址能直接跳转，不会被改成非法 hostname
-  - 主要模块：`common.ts`、导航 URL helper、host permission / match pattern helper
-
-- [x] `P1` 给每次发布补真实浏览器验收套件
-  - 这次手工验收覆盖了 `read_page`、`fill_form`、点击、等待、悬停、拖拽、截图、console 证据、新标签识别、标签组；这些应该变成发布前可重复跑的检查
-  - 建议子任务：
-    1. 已完成：`pnpm smoke:stdio -- --real-browser --verbose` 会启动内置本地 fixture，覆盖表单、异步更新、console 输出、新标签链接、剪贴板输入框、悬停、拖拽/放置和标签组检查
-    2. 已完成：`pnpm smoke:stdio` 通过 built stdio MCP server 校验工具列表；`--call-health` 会验证真实浏览器扩展和 native bridge
-    3. 已完成：真实浏览器 smoke 跑完会关闭创建的标签页、停止本地服务，并尽量恢复剪贴板内容
-    4. 已完成：smoke 命令输出精简 JSON，包含工具数量、health 元信息、创建的标签页 ID、悬停/拖拽坐标、标签组覆盖、剪贴板通道和 debug evidence 计数
-  - 验收方向：每个候选版本都能证明浏览器扩展、native bridge、stdio server、工具 schema 在真实浏览器里能一起工作
-  - 主要模块：`app/native-server`、`app/chrome-extension/tests`、发布脚本
-
-- [x] `P1` 让工具列表和版本新旧更容易确认
-  - 发现的问题：新启动的 MCP 客户端能看到 `chrome_clipboard` 和 `chrome_tab_group`，但已经运行中的 agent 会话可能还拿着旧工具列表，需要重连或重启才刷新
-  - 这轮处理：新增 `chrome_health`，返回扩展版本、bridge 版本、schema hash、工具数量、扩展 ID、窗口/标签页数量和 native host 状态
-  - 建议子任务：
-    1. 已完成：增加一个轻量 health/version 工具，返回扩展版本、bridge 版本、schema 版本、扩展 ID、已连接 tab 数
-    2. 已完成：文档里写清楚安装新扩展后的刷新顺序：重载扩展、重启 MCP client/agent、确认 tool schema 版本
-    3. 已完成：native bridge 给 `chrome_health` 响应补 bridge 版本和会话信息，schema hash 由扩展侧返回
-  - 验收方向：用户和 agent 能快速确认自己用的是新工具，不是旧 schema
-  - 主要模块：`register-tools.ts`、`mcp-server-stdio.ts`、native host 连接/状态代码、文档
-
-- [x] `P1` 降低调试证据里的噪音
-  - 发现的问题：`chrome_collect_debug_evidence` 能拿到页面日志，但也会混入其他已安装扩展的 console 输出和 runtime exception
-  - 这轮处理：默认过滤 `chrome-extension://` / `moz-extension://` 来源日志，页面来源排在前面；需要看扩展/content-script 日志时可传 `includeExtensionConsole=true`
-  - 建议子任务：
-    1. 已完成：默认优先返回页面来源日志，扩展/content-script 日志改成可选
-    2. 已完成：按 source URL 分组 console 信息，把页面错误放在第三方扩展噪音前面
-    3. 已完成：增加扩展 URL 和日志级别过滤；已知无害 content-script 消息可后续继续补规则
-  - 验收方向：网页没反应时，返回的第一批证据应该优先指向网页本身，而不是无关浏览器扩展
-  - 主要模块：`console.ts`、`console-buffer.ts`、`debug-evidence.ts`
-
-### 中期方向
-
-- [ ] 录制与回放从“能跑”补到“稳定可复用”
-- [ ] 工作流自动化从“单次执行”补到“可发布、可调试、可定时”
-- [ ] 增强浏览器支持（先把 Chrome / Edge 稳住，再评估 Firefox）
-- [ ] 身份认证和工具权限分级
+- 可选工具：`desktop_screenshot`、`desktop_click`、`desktop_move`、`desktop_key`、`desktop_type`、`desktop_window_list`、`desktop_activate_window`、`desktop_find_image`。
+- Windows 优先考虑 `win32api`、`win32gui`、`win32con`、`mss`、`Pillow`，必要时再用 `pyautogui`。
+- 坐标必须明确物理像素和 DPI 缩放，避免点偏。
+- 只用于文件选择器、系统弹窗、浏览器外 App、Chrome 权限弹窗、无法用扩展 API 操作的界面。
 
 ---
 
@@ -486,9 +380,3 @@ https://github.com/user-attachments/assets/83de4008-bb7e-494d-9b0f-98325cfea592
 - [架构设计](docs/ARCHITECTURE_zh.md) - 详细的技术架构说明
 - [工具列表](docs/TOOLS_zh.md) - 完整的工具 API 文档
 - [故障排除](docs/TROUBLESHOOTING_zh.md) - 常见问题解决方案
-
-## 微信交流群
-
-拉群的目的是让踩过坑的大佬们互相帮忙解答问题，因本人平时要忙着搬砖，不一定能及时解答
-
-![IMG_6296](https://github.com/user-attachments/assets/ecd2e084-24d2-4038-b75f-3ab020b55594)

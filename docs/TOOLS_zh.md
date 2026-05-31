@@ -231,6 +231,13 @@
 - `storeBase64` 返回的是压缩后的内联图片，避免太大
 - 如果传了 `storeBase64=true`，但没显式传 `savePng`，工具默认**不再额外落一个文件**
 - 如果你想同时拿内联图片和下载到本地的 PNG，显式传 `savePng=true`
+- `background=true` 时，viewport 和默认整页截图优先走 CDP，不用把 tab 切到前台；带自定义尺寸的整页截图和元素截图会回到 helper 方案
+
+坐标相关提醒：
+
+- 截图、`chrome_computer` 坐标、CDP 鼠标坐标都按当前 viewport 来算。
+- 如果 `storeBase64` 配了 `maxOutputWidth` / `maxOutputHeight`，返回图片可能被缩小，别直接拿缩小后的图片坐标去点。
+- 页面布局变化、滚动、首次 attach 后出现 Chrome 调试提示条，都可能让坐标偏掉；精确点击前重新截一次当前 viewport。
 
 **参数**：
 
@@ -278,6 +285,26 @@
   }
 }
 ```
+
+### `chrome_computer`
+
+综合鼠标、键盘、滚动、拖拽、截图操作。适合页面需要真实鼠标键盘行为，或者 JS 点击被页面忽略的情况。
+
+使用建议：
+
+- 能用 `chrome_scan_compact`、`chrome_read_page`、selector、ref 时，不要先猜坐标。
+- 必须点坐标时，先截图确认当前 viewport，并尽量点目标中心。
+- JS 事件的 `isTrusted=false`，有些页面会拒绝；这时用 `chrome_computer` 或 CDP 的 `Input.dispatchMouseEvent` / `Input.insertText`。
+- CDP 鼠标点击建议按 `mouseMoved -> mousePressed -> mouseReleased` 发事件。
+- 后台 tab 可能被 Chrome 节流，页面没有反应时先切到前台或用 CDP `Page.bringToFront`。
+
+**常用参数**：
+
+- `action`：操作类型，例如 `screenshot`、`left_click`、`left_click_drag`、`scroll`、`type`、`key`
+- `coordinates`：viewport 坐标
+- `selector` / `ref`：用页面元素定位，优先于裸坐标
+- `text` / `value`：输入文本或操作值
+- `timeout`：等待超时
 
 ## 🌐 网络监控
 
@@ -441,6 +468,38 @@
 }
 ```
 
+### `chrome_scan_compact`
+
+低输出扫描当前页面，适合 Agent 第一次看页面时使用。它会返回标题、URL、重要文本块、表单、按钮、输入框、select、弹窗/遮罩、iframe，以及后续可直接操作的 `ref`。
+
+**参数**：
+
+- `tabId` / `windowId` / `frameId`（可选）：指定目标标签页、窗口或 frame
+- `maxElements`（数字，可选）：最多返回多少个交互元素（默认：`80`，最大：`200`）
+- `maxTextBlocks`（数字，可选）：最多返回多少个标题/正文块（默认：`20`，最大：`80`）
+- `includeTextBlocks`（布尔值，可选）：是否返回重要文本块（默认：`true`）
+- `includeIframes`（布尔值，可选）：是否返回 iframe 摘要（默认：`true`）
+- `includeCoordinates`（布尔值，可选）：是否返回元素中心坐标（默认：`true`）
+
+**示例**：
+
+```json
+{
+  "maxElements": 60,
+  "maxTextBlocks": 12
+}
+```
+
+**返回重点**：
+
+- `frames[]`：每个 frame 的紧凑扫描结果，元素都会带 `frameId`
+- `elements[]`：按钮、链接、输入框、select、自定义 role 元素等
+- `forms[]`：表单及其前几个字段
+- `overlays[]`：dialog、popover、modal、drawer 等可能挡住页面的浮层
+- `iframes[]`：iframe 的 `src`、`title`、`ref` 和位置
+- `textBlocks[]`：页面主要标题和正文片段
+- `ref`：可继续传给 `chrome_click_element`、`chrome_fill_or_select`、`chrome_computer`
+
 ### `chrome_query_elements`
 
 直接查 DOM 元素并返回结构化列表。适合 `chrome_read_page` 不够细的时候，比如要批量拿元素、hidden 节点、属性、可见性和可复用的 ref。
@@ -466,7 +525,8 @@
 
 **返回重点**：
 
-- `elements[]`：每个元素至少包含 `ref`、`selectorHint`、`text`、`role`、`attributes`、`visible`、`enabled`、`tagName`、`frameId`
+- `elements[]`：每个元素至少包含 `ref`、`selectorHint`、`text`、`role`、`attributes`、`visible`、`enabled`、`tagName`、`frameId`，能拿到时还会带 `frameUrl`
+- `frames[]`：本次查过的 frame，包含 `frameId` 和能拿到的 `url`
 - `matchedFrameIds`：哪些 frame 里命中了
 - `truncated`：结果是否因为上限或扫描保护被截断
 
@@ -498,6 +558,111 @@
 - `htmlLength`：截断前的原始长度
 - `truncated`：是否被截断
 - `ref`、`selectorHint`、`attributes`、`visible`、`enabled`、`tagName`、`frameId`
+
+### `chrome_javascript`
+
+在页面里执行 JS 并返回结果。默认会脱敏和截断输出，适合读页面状态、跑小段 DOM 查询、补发事件。
+
+注意：
+
+- 这里创建的 DOM 事件是合成事件，`event.isTrusted=false`。页面如果检查真实用户输入，就改用 `chrome_computer` 或 CDP 的 `Input.dispatchMouseEvent` / `Input.insertText`。
+- 可以传 `frameId` 在指定 iframe 里执行；这种情况下会走 `chrome.scripting.executeScript` 的 isolated world。
+- 跨域 iframe 或需要页面主世界执行时，优先用 `Page.getFrameTree + Page.createIsolatedWorld` 走 CDP。
+- 返回大对象时控制输出大小，避免把整页 DOM 或大数组直接吐回来。
+
+**参数**：
+
+- `code`（字符串，必需）：要执行的 JS。工具会包在 async function 里，可用 `await` 和 `return`
+- `tabId` / `windowId`（可选）：指定目标标签页或窗口
+- `frameId`（数字，可选）：指定 iframe
+- `timeoutMs`（数字，可选）：超时时间（默认：`15000`）
+- `maxOutputBytes`（数字，可选）：最多返回多少字节（默认：`51200`）
+
+### `chrome_cdp_command`
+
+向当前标签页发送一条原始 Chrome DevTools Protocol 命令。适合高阶场景，比如直接调 `Runtime.evaluate`、`DOM.getDocument`、`DOM.querySelector`、`DOM.getBoxModel`、`Input.dispatchMouseEvent`、`Input.insertText`、`Page.captureScreenshot`、`Page.getFrameTree`、`Page.createIsolatedWorld`。
+
+能用 `chrome_read_page`、`chrome_scan_compact`、`chrome_click_element`、`chrome_computer` 解决时，优先用这些高层工具；原始 CDP 更适合处理特殊页面。
+
+操作提醒：
+
+- 真实点击建议先用 `DOM.getBoxModel` 拿元素中心，再发 `mouseMoved -> mousePressed -> mouseReleased`。
+- 首次 attach 后 Chrome 可能显示调试提示条，viewport 会变；等稳定后再重新算坐标。
+- 后台 tab 被节流时，先传 `bringToFront=true` 或手动发 `Page.bringToFront`。
+- 跨域 iframe 用 `Page.getFrameTree` 找 frame，再用 `Page.createIsolatedWorld` 建执行环境。
+
+**参数**：
+
+- `method`（字符串，必需）：CDP 方法名，例如 `Runtime.evaluate`
+- `params`（对象，可选）：CDP 参数
+- `tabId` / `windowId`（可选）：指定目标标签页或窗口
+- `bringToFront`（布尔值，可选）：执行前先发送 `Page.bringToFront`（默认：`false`）
+- `timeoutMs`（数字，可选）：超时时间（默认：`15000`，最大：`120000`）
+- `maxOutputBytes`（数字，可选）：最多返回多少字节（默认：`51200`）
+- `sanitizeOutput`（布尔值，可选）：是否脱敏返回结果（默认：`true`）。需要拿截图 base64 这类原始结果时设为 `false`
+
+**示例**：
+
+```json
+{
+  "method": "Runtime.evaluate",
+  "params": {
+    "expression": "document.title",
+    "returnByValue": true
+  }
+}
+```
+
+**返回重点**：
+
+- `success`：命令是否成功
+- `result`：未截断时返回结构化结果
+- `resultText`：结果被截断或不是 JSON 时返回文本
+- `truncated` / `redacted` / `originalBytes`：输出处理信息
+
+### `chrome_cdp_batch`
+
+用同一个 debugger session 顺序发送多条 CDP 命令，减少多轮 MCP 调用。适合 `DOM.getDocument -> DOM.querySelector -> DOM.getBoxModel -> Input.dispatchMouseEvent` 这类连续操作。
+
+典型用法：
+
+- 一次完成 `DOM.getDocument -> DOM.querySelector -> DOM.getBoxModel -> mouseMoved -> mousePressed -> mouseReleased`
+- 一次完成 `Page.getFrameTree -> Page.createIsolatedWorld -> Runtime.evaluate`
+- 对后台页面操作前，传 `bringToFront=true`
+
+**参数**：
+
+- `commands`（数组，必需）：命令列表，每项包含：
+  - `method`（字符串，必需）：CDP 方法名
+  - `params`（对象，可选）：CDP 参数
+  - `label`（字符串，可选）：给结果加一个名字，方便对照
+  - `continueOnError`（布尔值，可选）：本条失败后是否继续执行后续命令（默认：`false`）
+- `tabId` / `windowId`（可选）：指定目标标签页或窗口
+- `bringToFront`、`timeoutMs`、`maxOutputBytes`、`sanitizeOutput`：同 `chrome_cdp_command`
+
+**示例**：
+
+```json
+{
+  "commands": [
+    {
+      "label": "doc",
+      "method": "DOM.getDocument",
+      "params": { "depth": 1 }
+    },
+    {
+      "label": "frames",
+      "method": "Page.getFrameTree"
+    }
+  ]
+}
+```
+
+**返回重点**：
+
+- `requestedCount` / `executedCount`：请求和实际执行数量
+- `stoppedAt`：如果中途失败停止，这里会给出失败命令下标
+- `results[]`：每条命令的结果，包含 `index`、`label`、`method`、`success`
 
 ### `chrome_console`
 
@@ -679,11 +844,17 @@
 
 ### `chrome_click_element`
 
-使用 CSS 选择器点击元素。
+点击页面元素，支持 CSS selector、XPath、`chrome_read_page` / `chrome_scan_compact` 返回的 ref，也支持 viewport 坐标。
+
+普通按钮、链接、菜单优先用这个。页面检查真实用户输入、JS click 没反应、坐标必须非常准时，再换 `chrome_computer` 或 CDP 鼠标事件。
 
 **参数**：
 
-- `selector` (字符串，必需)：目标元素的 CSS 选择器
+- `selector` (字符串，可选)：目标元素的 CSS 选择器或 XPath
+- `selectorType` (字符串，可选)：`css` 或 `xpath`
+- `ref` (字符串，可选)：元素 ref
+- `coordinates` (对象，可选)：viewport 坐标
+- `waitForNavigation` (布尔值，可选)：点击后是否等待导航
 - `tabId` (数字，可选)：特定标签页 ID（默认：活动标签页）
 
 **示例**：
@@ -698,10 +869,14 @@
 
 填充表单字段或选择选项。
 
+普通 input、textarea、select、checkbox、radio 优先用这个。密码框、autofill 保护字段、必须前台聚焦后才接受输入的页面，先点击聚焦；如果仍失败，用 `chrome_keyboard` 或 CDP `Input.insertText`。
+
 **参数**：
 
-- `selector` (字符串，必需)：目标元素的 CSS 选择器
-- `value` (字符串，必需)：要填充或选择的值
+- `selector` (字符串，可选)：目标元素的 CSS 选择器或 XPath
+- `selectorType` (字符串，可选)：`css` 或 `xpath`
+- `ref` (字符串，可选)：元素 ref
+- `value` (字符串/数字/布尔值，必需)：要填充或选择的值
 - `tabId` (数字，可选)：特定标签页 ID（默认：活动标签页）
 
 **示例**：
@@ -814,18 +989,33 @@
 
 把文件塞进 `input[type="file"]`，并返回稳定的 `uploadId` 和浏览器侧的文件选择结果。
 
+默认走 CDP `DOM.setFileInputFiles`。执行前会尽量检查目标是不是 file input、是否 disabled、是否允许多文件、`accept` 是否可能不匹配；设置文件后会补 `input` / `change` / `blur`，最后再读一次浏览器侧选择状态。
+
+也可以传 `mode="dragDrop"`，工具会先创建临时 file input，用 CDP 塞入文件，再把这些 `File` 放进 `DataTransfer`，对目标元素派发 `dragenter` / `dragover` / `drop`。
+
+如果页面只有点击“上传”按钮后才创建 file input，可以传 `triggerSelector`，工具会先点击它，再等待 `selector` 对应的 file input 出现。
+
 **参数**：
 
-- `selector`（字符串，必需）：目标文件输入框选择器
+- `selector`（字符串，必需）：目标文件输入框选择器；`mode="dragDrop"` 时是拖拽区域选择器
+- `mode`（字符串，可选）：`fileInput` 或 `dragDrop`，默认 `fileInput`
+- `triggerSelector`（字符串，可选）：上传按钮或控件选择器，点击后等待 file input 出现
+- `waitForInputMs`（数字，可选）：点击 `triggerSelector` 后最多等待多久，默认 `3000`，最大 `10000`
 - `filePath` / `fileUrl` / `base64Data`：文件来源，三选一
 - `fileName`（字符串，可选）：`fileUrl` 或 `base64Data` 场景下使用的文件名
 - `tabId` / `windowId`（可选）：指定目标标签页
+- `multiple`（布尔值，可选）：目标输入框是否允许多文件
 
 **返回重点**：
 
 - `uploadId`：后续查状态用的会话 ID
 - `status`：浏览器侧执行结果，成功时为 `completed`
+- `mode`：实际上传模式
+- `triggerSelector` / `triggerResult`：触发按钮和等待 file input 的结果
 - `selectedFiles`、`fileCount`、`inputState`
+- `eventsDispatched`：已补发的事件，如 `input`、`change`、`blur`
+- `dropAccepted`：`dragDrop` 模式下，drop 事件是否未被取消
+- `acceptMismatch` / `warnings`：文件扩展名可能不匹配 `accept` 或选择状态异常时会给提示
 - `startedAt`、`completedAt`
 
 ### `chrome_get_upload_status`

@@ -47,6 +47,8 @@ type ErrorKind =
 interface JavaScriptToolParams {
   code: string;
   tabId?: number;
+  windowId?: number;
+  frameId?: number;
   timeoutMs?: number;
   maxOutputBytes?: number;
 }
@@ -68,6 +70,7 @@ interface ExecutionMetrics {
 interface JavaScriptToolResult {
   success: boolean;
   tabId: number;
+  frameId?: number;
   engine: ExecutionEngine;
   result?: string;
   truncated?: boolean;
@@ -305,10 +308,16 @@ async function executeViaScripting(
   tabId: number,
   code: string,
   options: ExecutionOptions,
+  frameId?: number,
 ): Promise<ExecutionResult> {
   const innerExecute = async (): Promise<ExecutionResult> => {
+    const target: chrome.scripting.InjectionTarget = { tabId };
+    if (typeof frameId === 'number') {
+      target.frameIds = [frameId];
+    }
+
     const results = await chrome.scripting.executeScript({
-      target: { tabId },
+      target,
       world: 'ISOLATED',
       func: async (userCode: string): Promise<ScriptingExecutionResult> => {
         try {
@@ -414,7 +423,7 @@ class JavaScriptTool extends BaseBrowserToolExecutor {
       }
 
       // Resolve target tab
-      const tab = await this.resolveTargetTab(args.tabId);
+      const tab = await this.resolveTargetTab(args.tabId, args.windowId);
       if (!tab) {
         return createErrorResponse(
           typeof args.tabId === 'number' ? `Tab not found: ${args.tabId}` : 'No active tab found',
@@ -433,6 +442,21 @@ class JavaScriptTool extends BaseBrowserToolExecutor {
       };
 
       const warnings: string[] = [];
+      const frameId = typeof args.frameId === 'number' ? args.frameId : undefined;
+
+      if (typeof frameId === 'number') {
+        warnings.push(
+          'frameId execution uses chrome.scripting.executeScript in ISOLATED world. For page-main-world or cross-origin CDP contexts, use chrome_cdp_command/chrome_cdp_batch.',
+        );
+
+        const scriptingResult = await executeViaScripting(tabId, code, options, frameId);
+
+        if (scriptingResult.ok) {
+          return this.buildSuccessResponse(tabId, scriptingResult, startTime, warnings, frameId);
+        }
+
+        return this.buildErrorResponse(tabId, scriptingResult, startTime, warnings, frameId);
+      }
 
       // Try CDP execution first
       const cdpResult = await executeViaCdp(tabId, code, options);
@@ -466,9 +490,15 @@ class JavaScriptTool extends BaseBrowserToolExecutor {
     }
   }
 
-  private async resolveTargetTab(tabId?: number): Promise<chrome.tabs.Tab | null> {
+  private async resolveTargetTab(
+    tabId?: number,
+    windowId?: number,
+  ): Promise<chrome.tabs.Tab | null> {
     if (typeof tabId === 'number') {
       return this.tryGetTab(tabId);
+    }
+    if (typeof windowId === 'number') {
+      return this.getActiveTabInWindow(windowId);
     }
     try {
       return await this.getActiveTabOrThrow();
@@ -482,10 +512,12 @@ class JavaScriptTool extends BaseBrowserToolExecutor {
     result: ExecutionSuccess,
     startTime: number,
     warnings?: string[],
+    frameId?: number,
   ): ToolResult {
     const payload: JavaScriptToolResult = {
       success: true,
       tabId,
+      frameId,
       engine: result.engine,
       result: result.output,
       truncated: result.truncated || undefined,
@@ -505,10 +537,12 @@ class JavaScriptTool extends BaseBrowserToolExecutor {
     result: ExecutionFailure,
     startTime: number,
     warnings?: string[],
+    frameId?: number,
   ): ToolResult {
     const payload: JavaScriptToolResult = {
       success: false,
       tabId,
+      frameId,
       engine: result.engine,
       error: result.error,
       warnings: warnings?.length ? warnings : undefined,

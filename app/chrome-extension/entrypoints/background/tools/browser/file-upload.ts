@@ -6,9 +6,13 @@ import { cdpSessionManager } from '@/utils/cdp-session-manager';
 type UploadExecutionStatus = 'pending' | 'completed' | 'failed';
 type UploadQueryStatus = UploadExecutionStatus | 'unknown';
 type UploadInputState = 'selected' | 'empty' | 'detached' | 'not_file_input' | 'error';
+type UploadMode = 'fileInput' | 'dragDrop';
 
 interface FileUploadToolParams {
   selector: string;
+  mode?: UploadMode;
+  triggerSelector?: string;
+  waitForInputMs?: number;
   filePath?: string;
   fileUrl?: string;
   base64Data?: string;
@@ -46,9 +50,29 @@ interface UploadInspectionResult {
   error?: string;
 }
 
+interface UploadEventDispatchResult {
+  found: boolean;
+  dispatchedEvents: string[];
+  error?: string;
+}
+
+interface DragDropUploadResult extends UploadEventDispatchResult {
+  fileCount?: number;
+  files?: UploadStatusFile[];
+  dropAccepted?: boolean;
+}
+
+interface FileInputTriggerResult {
+  found: boolean;
+  clicked: boolean;
+  elapsedMs: number;
+  error?: string;
+}
+
 interface UploadSessionRecord {
   uploadId: string;
   status: UploadExecutionStatus;
+  mode: UploadMode;
   tabId: number;
   selector: string;
   startedAt: number;
@@ -60,6 +84,9 @@ interface UploadSessionRecord {
   inputState?: UploadInputState;
   accept?: string;
   disabled?: boolean;
+  eventsDispatched?: string[];
+  acceptMismatch?: boolean;
+  warnings?: string[];
   error?: string;
 }
 
@@ -175,18 +202,335 @@ async function inspectFileInputStatus(
   return result as UploadInspectionResult;
 }
 
-async function dispatchFileInputChange(tabId: number, selector: string): Promise<void> {
-  await chrome.scripting.executeScript({
+function getAttributeValue(attributes: string[], name: string): string | undefined {
+  const normalizedName = name.toLowerCase();
+  for (let index = 0; index < attributes.length; index += 2) {
+    if (String(attributes[index] || '').toLowerCase() === normalizedName) {
+      return attributes[index + 1] ?? '';
+    }
+  }
+  return undefined;
+}
+
+function hasAttribute(attributes: string[], name: string): boolean {
+  return getAttributeValue(attributes, name) !== undefined;
+}
+
+function getFileName(input: string): string {
+  const trimmed = input.trim();
+  const withoutQuery = trimmed.split(/[?#]/, 1)[0] || trimmed;
+  const parts = withoutQuery.split(/[\\/]/);
+  return parts[parts.length - 1] || withoutQuery;
+}
+
+function getFileExtension(input: string): string {
+  const fileName = getFileName(input).toLowerCase();
+  const dotIndex = fileName.lastIndexOf('.');
+  return dotIndex >= 0 ? fileName.slice(dotIndex) : '';
+}
+
+function hasAcceptMismatch(files: string[], accept?: string): boolean {
+  const extensionRules = String(accept || '')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.startsWith('.'));
+
+  if (extensionRules.length === 0) return false;
+
+  return files.some((file) => {
+    const extension = getFileExtension(file);
+    return extension !== '' && !extensionRules.includes(extension);
+  });
+}
+
+async function dispatchFileInputEvents(
+  tabId: number,
+  selector: string,
+): Promise<UploadEventDispatchResult> {
+  const injected = await chrome.scripting.executeScript({
     target: { tabId } as chrome.scripting.InjectionTarget,
     world: 'MAIN',
     func: (querySelector: string) => {
-      const element = document.querySelector(querySelector);
-      if (element) {
+      try {
+        const element = document.querySelector(querySelector);
+        if (!element) {
+          return { found: false, dispatchedEvents: [] };
+        }
+
+        const dispatchedEvents: string[] = [];
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        dispatchedEvents.push('input');
         element.dispatchEvent(new Event('change', { bubbles: true }));
+        dispatchedEvents.push('change');
+
+        if (element instanceof HTMLElement) {
+          element.blur();
+          element.dispatchEvent(new Event('blur'));
+          dispatchedEvents.push('blur');
+        }
+
+        return { found: true, dispatchedEvents };
+      } catch (error) {
+        return {
+          found: false,
+          dispatchedEvents: [],
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
     },
     args: [selector],
   });
+
+  const result = Array.isArray(injected) ? injected[0]?.result : undefined;
+  if (!result || typeof result !== 'object') {
+    return {
+      found: false,
+      dispatchedEvents: [],
+      error: 'Failed to dispatch upload input/change events',
+    };
+  }
+
+  return result as UploadEventDispatchResult;
+}
+
+async function createTemporaryFileInput(
+  tabId: number,
+  uploadId: string,
+  multiple: boolean,
+): Promise<string> {
+  const tempSelector = `[data-chrome-mcp-upload-id="${uploadId}"]`;
+
+  const injected = await chrome.scripting.executeScript({
+    target: { tabId } as chrome.scripting.InjectionTarget,
+    world: 'MAIN',
+    func: (id: string, allowMultiple: boolean) => {
+      document
+        .querySelectorAll(`input[data-chrome-mcp-upload-id="${id}"]`)
+        .forEach((element) => element.remove());
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = allowMultiple;
+      input.setAttribute('data-chrome-mcp-upload-id', id);
+      input.style.position = 'fixed';
+      input.style.left = '-10000px';
+      input.style.top = '-10000px';
+      input.style.width = '1px';
+      input.style.height = '1px';
+      input.style.opacity = '0';
+      document.documentElement.appendChild(input);
+      return { created: true };
+    },
+    args: [uploadId, multiple],
+  });
+
+  const result = Array.isArray(injected) ? injected[0]?.result : undefined;
+  if (!result || typeof result !== 'object' || !(result as { created?: boolean }).created) {
+    throw new Error('Failed to create temporary file input for drag/drop upload');
+  }
+
+  return tempSelector;
+}
+
+async function removeTemporaryFileInput(tabId: number, tempSelector: string): Promise<void> {
+  await chrome.scripting
+    .executeScript({
+      target: { tabId } as chrome.scripting.InjectionTarget,
+      world: 'MAIN',
+      func: (selector: string) => {
+        document.querySelector(selector)?.remove();
+      },
+      args: [tempSelector],
+    })
+    .catch(() => undefined);
+}
+
+async function setTemporaryInputFilesWithCdp(
+  tabId: number,
+  tempSelector: string,
+  files: string[],
+): Promise<void> {
+  await cdpSessionManager.withSession(tabId, 'file-upload', async () => {
+    await cdpSessionManager.sendCommand(tabId, 'DOM.enable', {});
+
+    const { root } = (await cdpSessionManager.sendCommand(tabId, 'DOM.getDocument', {
+      depth: -1,
+      pierce: true,
+    })) as { root: { nodeId: number } };
+
+    const { nodeId } = (await cdpSessionManager.sendCommand(tabId, 'DOM.querySelector', {
+      nodeId: root.nodeId,
+      selector: tempSelector,
+    })) as { nodeId: number };
+
+    if (!nodeId || nodeId === 0) {
+      throw new Error('Temporary file input not found');
+    }
+
+    await cdpSessionManager.sendCommand(tabId, 'DOM.setFileInputFiles', {
+      nodeId,
+      files,
+    });
+  });
+}
+
+async function dispatchDragDropUpload(
+  tabId: number,
+  dropSelector: string,
+  tempInputSelector: string,
+): Promise<DragDropUploadResult> {
+  const injected = await chrome.scripting.executeScript({
+    target: { tabId } as chrome.scripting.InjectionTarget,
+    world: 'MAIN',
+    func: (targetSelector: string, inputSelector: string) => {
+      try {
+        const target = document.querySelector(targetSelector);
+        if (!target) {
+          return { found: false, dispatchedEvents: [], error: 'Drop target not found' };
+        }
+
+        const input = document.querySelector(inputSelector);
+        if (!(input instanceof HTMLInputElement)) {
+          return { found: false, dispatchedEvents: [], error: 'Temporary file input not found' };
+        }
+
+        const files = Array.from(input.files || []);
+        if (files.length === 0) {
+          return { found: true, dispatchedEvents: [], fileCount: 0, files: [] };
+        }
+
+        const dataTransfer = new DataTransfer();
+        for (const file of files) {
+          dataTransfer.items.add(file);
+        }
+        dataTransfer.effectAllowed = 'all';
+        dataTransfer.dropEffect = 'copy';
+
+        const dispatchedEvents: string[] = [];
+        let dropAccepted = false;
+
+        const dispatchDragEvent = (type: string) => {
+          let event: Event;
+          try {
+            event = new DragEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              composed: true,
+              dataTransfer,
+            });
+          } catch {
+            event = new Event(type, { bubbles: true, cancelable: true, composed: true });
+            Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
+          }
+
+          const accepted = target.dispatchEvent(event);
+          dispatchedEvents.push(type);
+          if (type === 'drop') dropAccepted = accepted;
+        };
+
+        dispatchDragEvent('dragenter');
+        dispatchDragEvent('dragover');
+        dispatchDragEvent('drop');
+        input.remove();
+
+        return {
+          found: true,
+          dispatchedEvents,
+          dropAccepted,
+          fileCount: files.length,
+          files: files.map((file) => ({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            lastModified: file.lastModified,
+          })),
+        };
+      } catch (error) {
+        return {
+          found: false,
+          dispatchedEvents: [],
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+    args: [dropSelector, tempInputSelector],
+  });
+
+  const result = Array.isArray(injected) ? injected[0]?.result : undefined;
+  if (!result || typeof result !== 'object') {
+    return {
+      found: false,
+      dispatchedEvents: [],
+      error: 'Failed to dispatch drag/drop upload events',
+    };
+  }
+
+  return result as DragDropUploadResult;
+}
+
+async function triggerAndWaitForFileInput(
+  tabId: number,
+  triggerSelector: string,
+  inputSelector: string,
+  timeoutMs: number,
+): Promise<FileInputTriggerResult> {
+  const injected = await chrome.scripting.executeScript({
+    target: { tabId } as chrome.scripting.InjectionTarget,
+    world: 'MAIN',
+    func: async (buttonSelector: string, fileInputSelector: string, waitMs: number) => {
+      const startedAt = Date.now();
+      const trigger = document.querySelector(buttonSelector);
+      if (!trigger) {
+        return {
+          found: false,
+          clicked: false,
+          elapsedMs: Date.now() - startedAt,
+          error: `Trigger "${buttonSelector}" not found`,
+        };
+      }
+
+      if (trigger instanceof HTMLElement) {
+        trigger.click();
+      } else {
+        trigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      }
+
+      const isFileInput = (element: Element | null) =>
+        element instanceof HTMLInputElement &&
+        String(element.getAttribute('type') || element.type || '').toLowerCase() === 'file';
+
+      while (Date.now() - startedAt <= waitMs) {
+        if (isFileInput(document.querySelector(fileInputSelector))) {
+          return {
+            found: true,
+            clicked: true,
+            elapsedMs: Date.now() - startedAt,
+          };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      return {
+        found: false,
+        clicked: true,
+        elapsedMs: Date.now() - startedAt,
+        error: `File input "${fileInputSelector}" did not appear within ${waitMs}ms`,
+      };
+    },
+    args: [triggerSelector, inputSelector, timeoutMs],
+  });
+
+  const result = Array.isArray(injected) ? injected[0]?.result : undefined;
+  if (!result || typeof result !== 'object') {
+    return {
+      found: false,
+      clicked: false,
+      elapsedMs: 0,
+      error: 'Failed to trigger and wait for file input',
+    };
+  }
+
+  return result as FileInputTriggerResult;
 }
 
 export const uploadSessionStore = {
@@ -207,7 +551,17 @@ class FileUploadTool extends BaseBrowserToolExecutor {
   name = TOOL_NAMES.BROWSER.FILE_UPLOAD;
 
   async execute(args: FileUploadToolParams): Promise<ToolResult> {
-    const { selector, filePath, fileUrl, base64Data, fileName, multiple = false } = args;
+    const {
+      selector,
+      triggerSelector,
+      waitForInputMs,
+      filePath,
+      fileUrl,
+      base64Data,
+      fileName,
+      multiple = false,
+    } = args;
+    const mode: UploadMode = args.mode === 'dragDrop' ? 'dragDrop' : 'fileInput';
 
     console.log(`Starting file upload operation with options:`, args);
 
@@ -221,6 +575,7 @@ class FileUploadTool extends BaseBrowserToolExecutor {
 
     const uploadId = `upload_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const startedAt = Date.now();
+    let filesRequested: string[] = filePath ? [filePath] : [];
 
     try {
       const explicit = await this.tryGetTab(args.tabId);
@@ -242,6 +597,7 @@ class FileUploadTool extends BaseBrowserToolExecutor {
           const session: UploadSessionRecord = {
             uploadId,
             status: 'failed',
+            mode,
             tabId,
             selector,
             startedAt,
@@ -257,10 +613,125 @@ class FileUploadTool extends BaseBrowserToolExecutor {
         }
         files = [tempFilePath];
       }
+      filesRequested = files;
+
+      const warnings: string[] = [];
+      let triggerResult: FileInputTriggerResult | undefined;
+
+      if (mode === 'dragDrop') {
+        rememberUploadSession({
+          uploadId,
+          status: 'pending',
+          mode,
+          tabId,
+          selector,
+          startedAt,
+          filesRequested: files,
+          multiple: multiple || files.length > 1,
+        });
+
+        const tempSelector = await createTemporaryFileInput(tabId, uploadId, true);
+        let dropResult: DragDropUploadResult | undefined;
+
+        try {
+          await setTemporaryInputFilesWithCdp(tabId, tempSelector, files);
+          dropResult = await dispatchDragDropUpload(tabId, selector, tempSelector);
+        } finally {
+          await removeTemporaryFileInput(tabId, tempSelector);
+        }
+
+        if (!dropResult || !dropResult.found || dropResult.error) {
+          throw new Error(dropResult.error || `Drop target "${selector}" not found`);
+        }
+
+        if (!dropResult.fileCount) {
+          warnings.push('Drop event dispatched, but no files were attached to DataTransfer');
+        }
+
+        const completedAt = Date.now();
+        const inputState: UploadInputState = dropResult.fileCount ? 'selected' : 'empty';
+        const session: UploadSessionRecord = {
+          uploadId,
+          status: 'completed',
+          mode,
+          tabId,
+          selector,
+          startedAt,
+          completedAt,
+          filesRequested: files,
+          multiple: multiple || files.length > 1,
+          selectedFiles: dropResult.files,
+          fileCount: dropResult.fileCount,
+          inputState,
+          eventsDispatched: dropResult.dispatchedEvents,
+          warnings,
+        };
+        rememberUploadSession(session);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                message: 'File(s) drag-dropped successfully',
+                uploadId,
+                status: 'completed',
+                mode,
+                selector,
+                tabId,
+                filesRequested: files,
+                fileCount: dropResult.fileCount ?? files.length,
+                selectedFiles: dropResult.files || [],
+                inputState,
+                eventsDispatched: dropResult.dispatchedEvents,
+                dropAccepted: dropResult.dropAccepted,
+                warnings,
+                startedAt,
+                completedAt,
+              }),
+            },
+          ],
+          isError: false,
+        };
+      }
+
+      if (triggerSelector) {
+        const waitMs =
+          typeof waitForInputMs === 'number' && Number.isFinite(waitForInputMs)
+            ? Math.min(10_000, Math.max(100, Math.floor(waitForInputMs)))
+            : 3000;
+
+        triggerResult = await triggerAndWaitForFileInput(tabId, triggerSelector, selector, waitMs);
+        if (!triggerResult.found) {
+          throw new Error(triggerResult.error || `File input "${selector}" did not appear`);
+        }
+      }
+
+      const preInspection = await inspectFileInputStatus(tabId, selector).catch(
+        (error): UploadInspectionResult => ({
+          found: false,
+          inputState: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+
+      if (preInspection.found && preInspection.isFileInput === false) {
+        throw new Error(`Element with selector "${selector}" is not a file input`);
+      }
+
+      if (preInspection.found && preInspection.disabled === true) {
+        throw new Error(`File input "${selector}" is disabled`);
+      }
+
+      if (files.length > 1 && preInspection.found && preInspection.multiple === false) {
+        throw new Error(`File input "${selector}" does not accept multiple files`);
+      }
 
       rememberUploadSession({
         uploadId,
         status: 'pending',
+        mode,
         tabId,
         selector,
         startedAt,
@@ -295,16 +766,24 @@ class FileUploadTool extends BaseBrowserToolExecutor {
         }
 
         const attributes = node.attributes || [];
-        let isFileInput = false;
-        for (let i = 0; i < attributes.length; i += 2) {
-          if (attributes[i] === 'type' && attributes[i + 1] === 'file') {
-            isFileInput = true;
-            break;
-          }
-        }
+        const inputType = String(getAttributeValue(attributes, 'type') || '').toLowerCase();
+        const isFileInput = inputType === 'file';
 
         if (!isFileInput) {
           throw new Error(`Element with selector "${selector}" is not a file input (type="file")`);
+        }
+
+        if (hasAttribute(attributes, 'disabled')) {
+          throw new Error(`File input "${selector}" is disabled`);
+        }
+
+        if (files.length > 1 && !hasAttribute(attributes, 'multiple')) {
+          throw new Error(`File input "${selector}" does not accept multiple files`);
+        }
+
+        const accept = getAttributeValue(attributes, 'accept') || preInspection.accept || '';
+        if (hasAcceptMismatch(files, accept)) {
+          warnings.push(`File extension may not match accept="${accept}"`);
         }
 
         await cdpSessionManager.sendCommand(tabId, 'DOM.setFileInputFiles', {
@@ -313,24 +792,44 @@ class FileUploadTool extends BaseBrowserToolExecutor {
         });
       });
 
-      await dispatchFileInputChange(tabId, selector);
+      const eventsResult = await dispatchFileInputEvents(tabId, selector);
+      if (eventsResult.error) {
+        warnings.push(eventsResult.error);
+      }
+
       const inspection = await inspectFileInputStatus(tabId, selector);
       const completedAt = Date.now();
+      const finalMultiple = inspection.multiple ?? preInspection.multiple ?? multiple;
+      const finalAccept = inspection.accept ?? preInspection.accept;
+      const finalDisabled = inspection.disabled ?? preInspection.disabled;
+      const acceptMismatch = hasAcceptMismatch(files, finalAccept);
+
+      if (acceptMismatch && !warnings.some((warning) => warning.includes('accept='))) {
+        warnings.push(`File extension may not match accept="${finalAccept}"`);
+      }
+
+      if (inspection.found && inspection.isFileInput && inspection.inputState !== 'selected') {
+        warnings.push(`File input state is "${inspection.inputState}" after upload`);
+      }
 
       const session: UploadSessionRecord = {
         uploadId,
         status: 'completed',
+        mode,
         tabId,
         selector,
         startedAt,
         completedAt,
         filesRequested: files,
-        multiple,
         selectedFiles: inspection.files,
         fileCount: inspection.fileCount,
         inputState: inspection.inputState,
-        accept: inspection.accept,
-        disabled: inspection.disabled,
+        accept: finalAccept,
+        disabled: finalDisabled,
+        multiple: finalMultiple,
+        eventsDispatched: eventsResult.dispatchedEvents,
+        acceptMismatch,
+        warnings,
       };
       rememberUploadSession(session);
 
@@ -343,14 +842,21 @@ class FileUploadTool extends BaseBrowserToolExecutor {
               message: 'File(s) uploaded successfully',
               uploadId,
               status: 'completed',
+              mode,
               selector,
+              triggerSelector,
+              triggerResult,
               tabId,
               filesRequested: files,
               fileCount: inspection.fileCount ?? files.length,
               selectedFiles: inspection.files || [],
               inputState: inspection.inputState,
-              accept: inspection.accept,
-              disabled: inspection.disabled,
+              accept: finalAccept,
+              disabled: finalDisabled,
+              multiple: finalMultiple,
+              eventsDispatched: eventsResult.dispatchedEvents,
+              acceptMismatch,
+              warnings,
               startedAt,
               completedAt,
             }),
@@ -368,11 +874,12 @@ class FileUploadTool extends BaseBrowserToolExecutor {
       rememberUploadSession({
         uploadId,
         status: 'failed',
+        mode,
         tabId,
         selector,
         startedAt,
         completedAt: Date.now(),
-        filesRequested: filePath ? [filePath] : [],
+        filesRequested,
         multiple,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -468,13 +975,15 @@ class UploadStatusTool extends BaseBrowserToolExecutor {
       let liveStatus: UploadInspectionResult | undefined;
       let liveCheckError: string | undefined;
 
-      if (typeof tabId === 'number' && tabId > 0 && targetSelector) {
+      const shouldLiveCheck = session?.mode !== 'dragDrop';
+
+      if (shouldLiveCheck && typeof tabId === 'number' && tabId > 0 && targetSelector) {
         try {
           liveStatus = await inspectFileInputStatus(tabId, targetSelector);
         } catch (error) {
           liveCheckError = error instanceof Error ? error.message : String(error);
         }
-      } else if (targetSelector) {
+      } else if (shouldLiveCheck && targetSelector) {
         liveCheckError = 'Target tab not found for live upload status check';
       }
 
@@ -493,6 +1002,7 @@ class UploadStatusTool extends BaseBrowserToolExecutor {
               success: true,
               uploadId: session?.uploadId || uploadId || undefined,
               status,
+              mode: session?.mode,
               selector: targetSelector || undefined,
               tabId,
               startedAt: session?.startedAt,
@@ -506,6 +1016,9 @@ class UploadStatusTool extends BaseBrowserToolExecutor {
               accept: liveStatus?.accept ?? session?.accept,
               disabled: liveStatus?.disabled ?? session?.disabled,
               multiple: liveStatus?.multiple ?? session?.multiple,
+              eventsDispatched: session?.eventsDispatched || [],
+              acceptMismatch: session?.acceptMismatch,
+              warnings: session?.warnings || [],
               liveCheckError,
               error: session?.error || liveStatus?.error,
             }),

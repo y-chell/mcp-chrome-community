@@ -15,7 +15,7 @@ describe('health tool', () => {
     (chrome.runtime as any).id = 'test-extension-id';
     (chrome.runtime as any).getManifest = vi.fn().mockReturnValue({
       name: 'mcp-chrome-community',
-      version: '1.0.8',
+      version: '1.0.9',
       manifest_version: 3,
     });
     (chrome as any).windows = {
@@ -59,7 +59,7 @@ describe('health tool', () => {
       extension: {
         id: 'test-extension-id',
         name: 'mcp-chrome-community',
-        version: '1.0.8',
+        version: '1.0.9',
         manifestVersion: 3,
       },
       browser: {

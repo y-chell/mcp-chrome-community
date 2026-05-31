@@ -5,6 +5,7 @@ export const TOOL_NAMES = {
     HEALTH: 'chrome_health',
     GET_WINDOWS_AND_TABS: 'get_windows_and_tabs',
     LIST_FRAMES: 'chrome_list_frames',
+    SCAN_COMPACT: 'chrome_scan_compact',
     SEARCH_TABS_CONTENT: 'search_tabs_content',
     NAVIGATE: 'chrome_navigate',
     SCREENSHOT: 'chrome_screenshot',
@@ -31,6 +32,8 @@ export const TOOL_NAMES = {
     INJECT_SCRIPT: 'chrome_inject_script',
     SEND_COMMAND_TO_INJECT_SCRIPT: 'chrome_send_command_to_inject_script',
     JAVASCRIPT: 'chrome_javascript',
+    CDP_COMMAND: 'chrome_cdp_command',
+    CDP_BATCH: 'chrome_cdp_batch',
     CONSOLE: 'chrome_console',
     COLLECT_DEBUG_EVIDENCE: 'chrome_collect_debug_evidence',
     FILE_UPLOAD: 'chrome_upload_file',
@@ -203,6 +206,51 @@ export const TOOL_SCHEMAS: Tool[] = [
     },
   },
   {
+    name: TOOL_NAMES.BROWSER.SCAN_COMPACT,
+    description:
+      'Return a compact page scan for agents: title, URL, important text blocks, forms, buttons, inputs, selects, dialogs/overlays, iframes, and stable element refs. Use this before chrome_read_page when you need a low-token overview of what can be operated on.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: {
+          type: 'number',
+          description: 'Target an existing tab by ID (default: active tab).',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+        frameId: {
+          type: 'number',
+          description:
+            'Optional frame ID. When omitted, scans all readable frames and includes frameId on each result.',
+        },
+        maxElements: {
+          type: 'number',
+          description:
+            'Maximum interactive/form/dialog/iframe elements to return (default 80, max 200).',
+        },
+        maxTextBlocks: {
+          type: 'number',
+          description: 'Maximum heading/paragraph text blocks to return (default 20, max 80).',
+        },
+        includeTextBlocks: {
+          type: 'boolean',
+          description: 'Include compact heading/paragraph text blocks (default true).',
+        },
+        includeIframes: {
+          type: 'boolean',
+          description: 'Include iframe summaries (default true).',
+        },
+        includeCoordinates: {
+          type: 'boolean',
+          description: 'Include viewport center coordinates for returned elements (default true).',
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: TOOL_NAMES.BROWSER.READ_PAGE,
     description:
       'Get an accessibility tree representation of visible elements on the page. Only returns elements that are visible in the viewport. Optionally filter for only interactive elements.\nTip: If the returned elements do not include the specific element you need, use the computer tool\'s screenshot (action="screenshot") to capture the element\'s on-screen coordinates, then operate by coordinates.',
@@ -239,7 +287,7 @@ export const TOOL_SCHEMAS: Tool[] = [
   {
     name: TOOL_NAMES.BROWSER.QUERY_ELEMENTS,
     description:
-      'Query DOM elements directly and return a structured element list, including hidden elements when requested. Useful when chrome_read_page is too high-level and you need refs, attributes, visibility, enabled state, or exact DOM matches.',
+      'Query DOM elements directly and return a structured element list, including hidden elements when requested. Useful when chrome_read_page is too high-level and you need refs, attributes, visibility, enabled state, exact DOM matches, or frame-aware results. CSS queries traverse open shadow roots; XPath does not cross shadow roots.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -333,7 +381,7 @@ export const TOOL_SCHEMAS: Tool[] = [
   {
     name: TOOL_NAMES.BROWSER.COMPUTER,
     description:
-      "Use a mouse and keyboard to interact with a web browser, and take screenshots.\n* Whenever you intend to click on an element like an icon, you should consult a read_page to determine the ref of the element before moving the cursor.\n* If you tried clicking on a program or link but it failed to load, even after waiting, try screenshot and then adjusting your click location so that the tip of the cursor visually falls on the element that you want to click.\n* Make sure to click any buttons, links, icons, etc with the cursor tip in the center of the element. Don't click boxes on their edges unless asked.",
+      'Use a mouse and keyboard to interact with a web browser, and take screenshots.\n* Prefer chrome_scan_compact, chrome_read_page, refs, or selectors before using coordinates. If you use coordinates, capture the current viewport first and click the element center.\n* Coordinates are viewport CSS pixels for the current tab. Chrome debugger attach/infobar or layout changes can shift the page, so recapture before precise clicks.\n* Use this or chrome_cdp_command/chrome_cdp_batch when JavaScript DOM events are ignored because event.isTrusted is false.\n* If a click does not load after waiting, take a screenshot and adjust the click point so the cursor tip is centered on the target.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -950,7 +998,7 @@ export const TOOL_SCHEMAS: Tool[] = [
   {
     name: TOOL_NAMES.BROWSER.SCREENSHOT,
     description:
-      '[Prefer read_page over taking a screenshot and Prefer chrome_computer] Take a screenshot of the current page or a specific element. For new usage, use chrome_computer with action="screenshot". Use this tool if you need advanced options.',
+      '[Prefer read_page over taking a screenshot and Prefer chrome_computer] Take a screenshot of the current page or a specific element. For new usage, use chrome_computer with action="screenshot". Use this tool if you need advanced options. Screenshot output can be resized when storeBase64/maxOutputWidth/maxOutputHeight are used; recapture the current viewport before reusing coordinates for clicks.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -967,7 +1015,7 @@ export const TOOL_SCHEMAS: Tool[] = [
         background: {
           type: 'boolean',
           description:
-            'Attempt capture without bringing tab/window to foreground. CDP-based capture is used for simple viewport captures. For element/full-page capture, the tab may still be made active in its window without focusing the window. Default: false',
+            'Attempt capture without bringing tab/window to foreground. CDP-based capture is used for viewport captures and default full-page captures. Full-page captures with custom width/height/maxHeight, and element captures, fall back to helper-based capture. Default: false',
         },
         width: { type: 'number', description: 'Width in pixels (default: 800)' },
         height: { type: 'number', description: 'Height in pixels (default: 600)' },
@@ -1448,7 +1496,7 @@ export const TOOL_SCHEMAS: Tool[] = [
   {
     name: TOOL_NAMES.BROWSER.JAVASCRIPT,
     description:
-      'Execute JavaScript code in a browser tab and return the result. Uses CDP Runtime.evaluate with awaitPromise and returnByValue; automatically falls back to chrome.scripting.executeScript if the debugger is busy. Output is sanitized (sensitive data redacted) and truncated by default.',
+      'Execute JavaScript code in a browser tab and return the result. Uses CDP Runtime.evaluate with awaitPromise and returnByValue; automatically falls back to chrome.scripting.executeScript if the debugger is busy. DOM events created here are synthetic (event.isTrusted=false); if a site ignores them, use chrome_computer or CDP Input events. For cross-origin iframes, prefer Page.getFrameTree + Page.createIsolatedWorld via chrome_cdp_command/chrome_cdp_batch. Output is sanitized (sensitive data redacted) and truncated by default.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1460,6 +1508,15 @@ export const TOOL_SCHEMAS: Tool[] = [
         tabId: {
           type: 'number',
           description: 'Target tab ID. If omitted, uses the current active tab.',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+        frameId: {
+          type: 'number',
+          description:
+            'Target frame ID. When provided, execution uses chrome.scripting.executeScript in the frame isolated world.',
         },
         timeoutMs: {
           type: 'number',
@@ -1475,9 +1532,117 @@ export const TOOL_SCHEMAS: Tool[] = [
     },
   },
   {
+    name: TOOL_NAMES.BROWSER.CDP_COMMAND,
+    description:
+      'Send one raw Chrome DevTools Protocol command to a tab through chrome.debugger. Useful for advanced browser automation such as Runtime.evaluate, DOM.getDocument, DOM.querySelector, DOM.getBoxModel, Input.dispatchMouseEvent, Input.insertText, Page.captureScreenshot, Page.getFrameTree, and Page.createIsolatedWorld. For trusted clicks, get center coordinates with DOM.getBoxModel and dispatch mouseMoved -> mousePressed -> mouseReleased. Use bringToFront for throttled background tabs, and recapture coordinates after first debugger attach or Chrome infobar changes. Prefer higher-level tools when they fit.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        method: {
+          type: 'string',
+          description: 'CDP method name, for example "Runtime.evaluate" or "Page.getFrameTree".',
+        },
+        params: {
+          type: 'object',
+          description: 'CDP command parameters object.',
+        },
+        tabId: {
+          type: 'number',
+          description: 'Target tab ID. If omitted, uses the current active tab.',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+        bringToFront: {
+          type: 'boolean',
+          description: 'Send Page.bringToFront before the command (default false).',
+        },
+        timeoutMs: {
+          type: 'number',
+          description: 'Command timeout in milliseconds (default 15000, max 120000).',
+        },
+        maxOutputBytes: {
+          type: 'number',
+          description: 'Maximum serialized result size in bytes (default 51200).',
+        },
+        sanitizeOutput: {
+          type: 'boolean',
+          description:
+            'Redact cookies/tokens/password-like data from the CDP result (default true). Set false only when you need raw CDP output such as screenshot base64.',
+        },
+      },
+      required: ['method'],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.CDP_BATCH,
+    description:
+      'Send multiple Chrome DevTools Protocol commands to a tab using one shared debugger session. Use this to reduce MCP round trips for flows like DOM.getDocument -> DOM.querySelector -> DOM.getBoxModel -> Input.dispatchMouseEvent. Good for trusted click sequences: mouseMoved -> mousePressed -> mouseReleased. Use bringToFront before actions on throttled background tabs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        commands: {
+          type: 'array',
+          description:
+            'Commands to run in order. Each item supports method, params, label, and continueOnError.',
+          items: {
+            type: 'object',
+            properties: {
+              method: {
+                type: 'string',
+                description: 'CDP method name.',
+              },
+              params: {
+                type: 'object',
+                description: 'CDP command parameters object.',
+              },
+              label: {
+                type: 'string',
+                description: 'Optional label copied into the result for easier matching.',
+              },
+              continueOnError: {
+                type: 'boolean',
+                description:
+                  'Continue with following commands if this command fails (default false).',
+              },
+            },
+            required: ['method'],
+          },
+        },
+        tabId: {
+          type: 'number',
+          description: 'Target tab ID. If omitted, uses the current active tab.',
+        },
+        windowId: {
+          type: 'number',
+          description: 'Target window ID to pick active tab when tabId is omitted.',
+        },
+        bringToFront: {
+          type: 'boolean',
+          description: 'Send Page.bringToFront before the batch (default false).',
+        },
+        timeoutMs: {
+          type: 'number',
+          description: 'Timeout for each command in milliseconds (default 15000, max 120000).',
+        },
+        maxOutputBytes: {
+          type: 'number',
+          description: 'Maximum serialized result size per command in bytes (default 51200).',
+        },
+        sanitizeOutput: {
+          type: 'boolean',
+          description:
+            'Redact cookies/tokens/password-like data from command results (default true). Set false only when raw CDP output is required.',
+        },
+      },
+      required: ['commands'],
+    },
+  },
+  {
     name: TOOL_NAMES.BROWSER.CLICK,
     description:
-      'Click on an element in a web page. Supports multiple targeting methods: CSS selector, XPath, element ref (from chrome_read_page), or viewport coordinates. More focused than chrome_computer for simple click operations.',
+      'Click on an element in a web page. Supports multiple targeting methods: CSS selector, XPath, element ref (from chrome_read_page), or viewport coordinates. More focused than chrome_computer for simple click operations. This uses page-side DOM interaction; if the target requires trusted user input or precise coordinates, switch to chrome_computer or CDP Input.dispatchMouseEvent.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1549,7 +1714,7 @@ export const TOOL_SCHEMAS: Tool[] = [
   {
     name: TOOL_NAMES.BROWSER.FILL,
     description:
-      'Fill or select a form element on a web page. Supports input, textarea, select, checkbox, and radio elements. Use CSS selector, XPath, or element ref to target the element.',
+      'Fill or select a form element on a web page. Supports input, textarea, select, checkbox, and radio elements. Use CSS selector, XPath, or element ref to target the element. For autofill/password-protected fields that only accept input after foreground focus, click/focus first and use chrome_keyboard or CDP Input.insertText if synthetic fill is ignored.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1830,7 +1995,7 @@ export const TOOL_SCHEMAS: Tool[] = [
   {
     name: TOOL_NAMES.BROWSER.FILE_UPLOAD,
     description:
-      'Upload files to web forms with file input elements using Chrome DevTools Protocol. Returns an uploadId plus browser-side selection status.',
+      'Upload files to web forms using Chrome DevTools Protocol. Default mode targets input[type="file"] with DOM.setFileInputFiles, checks disabled/multiple/accept state where possible, dispatches input/change/blur events, checks browser-side selection state, and returns an uploadId. Set mode="dragDrop" to dispatch dragenter/dragover/drop with DataTransfer files to a drop zone selector.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1841,7 +2006,24 @@ export const TOOL_SCHEMAS: Tool[] = [
         },
         selector: {
           type: 'string',
-          description: 'CSS selector for the file input element (input[type="file"])',
+          description:
+            'CSS selector for the file input element, or for the drop zone when mode="dragDrop".',
+        },
+        mode: {
+          type: 'string',
+          enum: ['fileInput', 'dragDrop'],
+          description:
+            'Upload mode. fileInput uses DOM.setFileInputFiles on selector (default). dragDrop creates a temporary file input, attaches files with CDP, then dispatches drag/drop events to selector.',
+        },
+        triggerSelector: {
+          type: 'string',
+          description:
+            'Optional selector for a button/control to click before looking for the file input. Useful when the page creates input[type="file"] only after clicking an upload button. Only used in fileInput mode.',
+        },
+        waitForInputMs: {
+          type: 'number',
+          description:
+            'How long to wait for selector to become a file input after triggerSelector is clicked (default 3000, max 10000).',
         },
         filePath: {
           type: 'string',
@@ -1861,7 +2043,8 @@ export const TOOL_SCHEMAS: Tool[] = [
         },
         multiple: {
           type: 'boolean',
-          description: 'Whether the input accepts multiple files (default: false)',
+          description:
+            'Whether the input accepts multiple files (default: false). The tool will fail clearly when multiple files are requested but the target input does not allow them.',
         },
       },
       required: ['selector'],

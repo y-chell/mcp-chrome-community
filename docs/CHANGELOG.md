@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Real-browser release acceptance coverage**: `pnpm smoke:stdio -- --real-browser --verbose` now exercises hover, drag/drop, and tab grouping in the local fixture flow, and reports the covered interaction metadata in its JSON output
 - **Release smoke gate**: the release workflow now runs `pnpm smoke:stdio` after building the native server, so published releases fail early if stdio tool discovery breaks
 
+## [v1.0.9] - 2026-06-01
+
+### Added
+
+- **Compact agent page scan**: added `chrome_scan_compact` for low-token page summaries with forms, controls, dialogs, iframes, text blocks, coordinates, and reusable refs
+- **Raw CDP tools**: added `chrome_cdp_command` and `chrome_cdp_batch` for advanced browser automation such as trusted mouse events, `Runtime.evaluate`, frame tree inspection, and CDP screenshots
+- **Frame-aware JavaScript**: `chrome_javascript` can now target a specific `frameId` through `chrome.scripting.executeScript`
+
+### Changed
+
+- **Upload compatibility**: `chrome_upload_file` now validates file inputs, dispatches `input` / `change` / `blur`, supports trigger-created file inputs, and supports `mode="dragDrop"`
+- **Frame-aware DOM output**: `chrome_query_elements` and `chrome_get_element_html` now return clearer frame metadata, including `frames[]`, `frameId`, and `frameUrl` when available
+- **Background screenshots**: `chrome_screenshot` now uses CDP for `background=true` viewport and default full-page captures, avoiding foreground tab switching in those cases
+- **Agent guidance docs**: README and TOOLS docs now include GenericAgent-style browser automation notes for CDP clicks, debugger attach coordinate shifts, `isTrusted=false`, iframe handling, uploads, and screenshot coordinates
+
 ## [v1.0.8] - 2026-04-30
 
 ### Added

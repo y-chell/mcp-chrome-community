@@ -9,7 +9,7 @@ import { NativeMessageType, TOOL_SCHEMAS } from 'chrome-mcp-shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServerContext } from './mcp-server';
 
-const BRIDGE_VERSION = '1.0.8';
+const BRIDGE_VERSION = '1.0.9';
 const HEALTH_TOOL_NAME = 'chrome_health';
 
 type ToolCallContext = McpServerContext & {

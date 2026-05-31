@@ -37,9 +37,10 @@ describe('dom query tools', () => {
         active: true,
       },
     ]);
-    (chrome.webNavigation.getAllFrames as any) = vi
-      .fn()
-      .mockResolvedValue([{ frameId: 0 }, { frameId: 7 }]);
+    (chrome.webNavigation.getAllFrames as any) = vi.fn().mockResolvedValue([
+      { frameId: 0, url: 'https://example.com/page' },
+      { frameId: 7, url: 'https://child.example.com/frame' },
+    ]);
   });
 
   it('queries elements across frames and remembers returned refs', async () => {
@@ -81,9 +82,18 @@ describe('dom query tools', () => {
       count: 2,
       matchedFrameIds: [0, 7],
       framesSearched: [0, 7],
+      frames: [
+        { frameId: 0, url: 'https://example.com/page' },
+        { frameId: 7, url: 'https://child.example.com/frame' },
+      ],
       elements: [
-        { ref: 'ref_top', frameId: 0, tagName: 'button' },
-        { ref: 'ref_child', frameId: 7, tagName: 'input' },
+        { ref: 'ref_top', frameId: 0, frameUrl: 'https://example.com/page', tagName: 'button' },
+        {
+          ref: 'ref_child',
+          frameId: 7,
+          frameUrl: 'https://child.example.com/frame',
+          tagName: 'input',
+        },
       ],
     });
   });
@@ -147,6 +157,7 @@ describe('dom query tools', () => {
     expect(parseJsonResult(result)).toMatchObject({
       success: true,
       frameId: 7,
+      frameUrl: 'https://child.example.com/frame',
       ref: 'ref_html',
       tagName: 'div',
       html: '<div id="panel">Hello</div>',

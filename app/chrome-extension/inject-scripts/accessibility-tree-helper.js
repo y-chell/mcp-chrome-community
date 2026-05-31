@@ -615,6 +615,349 @@
     return summary;
   }
 
+  const COMPACT_ELEMENT_SELECTOR = [
+    'a[href]',
+    'button',
+    'input',
+    'textarea',
+    'select',
+    'summary',
+    '[contenteditable="true"]',
+    '[role="button"]',
+    '[role="link"]',
+    '[role="textbox"]',
+    '[role="combobox"]',
+    '[role="searchbox"]',
+    '[role="checkbox"]',
+    '[role="radio"]',
+    '[role="switch"]',
+    '[role="tab"]',
+    '[role="menuitem"]',
+    '[role="option"]',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(',');
+
+  const COMPACT_FORM_SELECTOR = 'form, fieldset, [role="form"], [role="search"]';
+  const COMPACT_IFRAME_SELECTOR = 'iframe, frame';
+  const COMPACT_OVERLAY_SELECTOR = [
+    'dialog',
+    '[role="dialog"]',
+    '[role="alertdialog"]',
+    '[aria-modal="true"]',
+    '[popover]',
+    '[role="menu"]',
+    '[role="listbox"]',
+    '[class*="modal" i]',
+    '[class*="dialog" i]',
+    '[class*="popover" i]',
+    '[class*="overlay" i]',
+    '[class*="drawer" i]',
+  ].join(',');
+  const COMPACT_TEXT_SELECTOR = [
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    '[role="heading"]',
+    'main p',
+    'article p',
+    'section p',
+    'main li',
+    'article li',
+  ].join(',');
+
+  function clampCompactNumber(value, fallback, min, max) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.max(min, Math.min(max, Math.floor(num)));
+  }
+
+  function compactText(value, maxLength = 160) {
+    const text = normalizeText(String(value || ''));
+    if (!text) return '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  }
+
+  function inferSafeLabel(el) {
+    const tag = el.tagName.toLowerCase();
+    const aria = el.getAttribute('aria-label');
+    if (aria && aria.trim()) return aria.trim();
+    const placeholder = el.getAttribute('placeholder');
+    if (placeholder && placeholder.trim()) return placeholder.trim();
+    const title = el.getAttribute('title');
+    if (title && title.trim()) return title.trim();
+    if (/** @type {HTMLElement} */ (el).id) {
+      const lab = document.querySelector(
+        `label[for="${cssEscape(/** @type {HTMLElement} */ (el).id)}"]`,
+      );
+      if (lab && lab.textContent && lab.textContent.trim()) return lab.textContent.trim();
+    }
+    if (['input', 'textarea', 'select'].includes(tag)) return '';
+    return inferLabel(el) || normalizeText(el.textContent || '');
+  }
+
+  function compactRect(el, includeCoordinates) {
+    const rect = /** @type {HTMLElement} */ (el).getBoundingClientRect();
+    const result = {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    };
+    if (includeCoordinates !== false) {
+      result.center = {
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.top + rect.height / 2),
+      };
+    }
+    return result;
+  }
+
+  function compactElementKind(el) {
+    const tag = el.tagName.toLowerCase();
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    if (tag === 'input') return `input:${(el.getAttribute('type') || 'text').toLowerCase()}`;
+    if (tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a') return tag;
+    if (role) return `role:${role}`;
+    if (tag === 'summary') return 'summary';
+    if (el.getAttribute('contenteditable') === 'true') return 'contenteditable';
+    return tag;
+  }
+
+  function compactElementAttrs(el) {
+    const tag = el.tagName.toLowerCase();
+    const attrs = {};
+    for (const name of [
+      'id',
+      'name',
+      'type',
+      'placeholder',
+      'autocomplete',
+      'aria-label',
+      'aria-expanded',
+      'aria-checked',
+      'aria-selected',
+      'href',
+    ]) {
+      const value = el.getAttribute(name);
+      if (!value) continue;
+      if (name === 'href') {
+        attrs.href = value.length > 120 ? value.substring(0, 120) + '...' : value;
+      } else {
+        attrs[name] = value.length > 80 ? value.substring(0, 80) + '...' : value;
+      }
+    }
+    if (['input', 'textarea', 'select'].includes(tag)) {
+      const field = /** @type {HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement} */ (el);
+      attrs.required = field.required === true || undefined;
+      attrs.readOnly = 'readOnly' in field && field.readOnly === true ? true : undefined;
+      attrs.hasValue = typeof field.value === 'string' && field.value.length > 0;
+      attrs.autofill = {
+        autocomplete: el.getAttribute('autocomplete') || null,
+        protected:
+          (el.getAttribute('type') || '').toLowerCase() === 'password' ||
+          ['one-time-code', 'current-password', 'new-password', 'cc-number'].includes(
+            (el.getAttribute('autocomplete') || '').toLowerCase(),
+          ),
+      };
+      if (tag === 'select') {
+        const select = /** @type {HTMLSelectElement} */ (el);
+        attrs.optionCount = select.options ? select.options.length : 0;
+      }
+    }
+    if (
+      tag === 'input' &&
+      ['checkbox', 'radio'].includes((el.getAttribute('type') || '').toLowerCase())
+    ) {
+      attrs.checked = /** @type {HTMLInputElement} */ (el).checked === true;
+    }
+    return Object.fromEntries(Object.entries(attrs).filter(([, value]) => value !== undefined));
+  }
+
+  function summarizeCompactElement(el, options = {}) {
+    const ref = getOrCreateRef(el);
+    return {
+      ref,
+      kind: compactElementKind(el),
+      tag: el.tagName.toLowerCase(),
+      role: inferRole(el),
+      text: compactText(inferSafeLabel(el), 120),
+      selector: generateSelector(el),
+      visible: isVisible(el),
+      enabled: isEnabled(el),
+      attrs: compactElementAttrs(el),
+      rect: compactRect(el, options.includeCoordinates !== false),
+    };
+  }
+
+  function summarizeCompactForm(el, options = {}) {
+    const controls = Array.from(
+      el.querySelectorAll('input, textarea, select, button, [contenteditable="true"]'),
+    ).filter((item) => item instanceof Element && isVisible(item));
+    return {
+      ref: getOrCreateRef(el),
+      tag: el.tagName.toLowerCase(),
+      role: inferRole(el),
+      text: compactText(inferSafeLabel(el), 120),
+      selector: generateSelector(el),
+      method: (el.getAttribute('method') || '').toLowerCase() || undefined,
+      action: compactText(el.getAttribute('action') || '', 160) || undefined,
+      controlCount: controls.length,
+      controls: controls.slice(0, 12).map((control) => ({
+        ref: getOrCreateRef(control),
+        kind: compactElementKind(control),
+        text: compactText(inferSafeLabel(control), 80),
+        attrs: compactElementAttrs(control),
+      })),
+      rect: compactRect(el, options.includeCoordinates !== false),
+    };
+  }
+
+  function isOverlayCandidate(el) {
+    if (!isVisible(el)) return false;
+    const tag = el.tagName.toLowerCase();
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    if (
+      tag === 'dialog' ||
+      role === 'dialog' ||
+      role === 'alertdialog' ||
+      el.getAttribute('aria-modal') === 'true' ||
+      el.hasAttribute('popover')
+    ) {
+      return true;
+    }
+    const style = window.getComputedStyle(/** @type {HTMLElement} */ (el));
+    const rect = /** @type {HTMLElement} */ (el).getBoundingClientRect();
+    const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+    const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+    const zIndex = Number.parseInt(style.zIndex || '0', 10);
+    return (
+      ['fixed', 'sticky'].includes(style.position) &&
+      (Number.isFinite(zIndex) ? zIndex >= 100 : style.zIndex === 'auto') &&
+      area / viewportArea >= 0.05
+    );
+  }
+
+  function collectCompactTextBlocks(limit) {
+    const result = collectCssMatches(COMPACT_TEXT_SELECTOR, document, {
+      includeHidden: false,
+      limit: Math.max(limit * 3, limit),
+    });
+    if (result.error || !Array.isArray(result.elements)) {
+      return { blocks: [], totalMatches: 0, truncated: false };
+    }
+    const blocks = [];
+    const seen = new Set();
+    for (const el of result.elements) {
+      if (el.closest('nav, footer, aside, [role="navigation"], [aria-hidden="true"]')) continue;
+      const tag = el.tagName.toLowerCase();
+      const text = compactText(el.textContent || '', tag.startsWith('h') ? 140 : 220);
+      if (!text || seen.has(text)) continue;
+      if (!tag.startsWith('h') && text.length < 30) continue;
+      seen.add(text);
+      blocks.push({
+        tag,
+        role: inferRole(el),
+        text,
+        selector: generateSelector(el),
+      });
+      if (blocks.length >= limit) break;
+    }
+    return {
+      blocks,
+      totalMatches: result.totalMatches || blocks.length,
+      truncated: result.truncated === true || blocks.length >= limit,
+    };
+  }
+
+  function scanCompactPage(options = {}) {
+    const maxElements = clampCompactNumber(options.maxElements, 80, 1, 200);
+    const maxTextBlocks = clampCompactNumber(options.maxTextBlocks, 20, 0, 80);
+    const includeTextBlocks = options.includeTextBlocks !== false;
+    const includeIframes = options.includeIframes !== false;
+    const includeCoordinates = options.includeCoordinates !== false;
+
+    const elementResult = collectCssMatches(COMPACT_ELEMENT_SELECTOR, document, {
+      includeHidden: false,
+      limit: maxElements,
+    });
+    const formResult = collectCssMatches(COMPACT_FORM_SELECTOR, document, {
+      includeHidden: false,
+      limit: 30,
+    });
+    const overlayResult = collectCssMatches(COMPACT_OVERLAY_SELECTOR, document, {
+      includeHidden: false,
+      limit: 30,
+    });
+    const iframeResult = includeIframes
+      ? collectCssMatches(COMPACT_IFRAME_SELECTOR, document, {
+          includeHidden: false,
+          limit: 30,
+        })
+      : { elements: [], totalMatches: 0, truncated: false };
+
+    const elements = Array.isArray(elementResult.elements)
+      ? elementResult.elements.map((el) => summarizeCompactElement(el, { includeCoordinates }))
+      : [];
+    const forms = Array.isArray(formResult.elements)
+      ? formResult.elements.map((el) => summarizeCompactForm(el, { includeCoordinates }))
+      : [];
+    const overlays = Array.isArray(overlayResult.elements)
+      ? overlayResult.elements
+          .filter((el) => isOverlayCandidate(el))
+          .slice(0, 10)
+          .map((el) => summarizeCompactElement(el, { includeCoordinates }))
+      : [];
+    const iframes = Array.isArray(iframeResult.elements)
+      ? iframeResult.elements.map((el) => ({
+          ref: getOrCreateRef(el),
+          title: compactText(el.getAttribute('title') || '', 100),
+          name: compactText(el.getAttribute('name') || '', 80),
+          src: compactText(el.getAttribute('src') || '', 180),
+          selector: generateSelector(el),
+          rect: compactRect(el, includeCoordinates),
+        }))
+      : [];
+    const text = includeTextBlocks
+      ? collectCompactTextBlocks(maxTextBlocks)
+      : { blocks: [], totalMatches: 0, truncated: false };
+
+    const refMap = [...elements, ...forms, ...overlays, ...iframes]
+      .filter((item) => item && item.ref)
+      .map((item) => ({ ref: item.ref, selector: item.selector, rect: item.rect }));
+
+    return {
+      title: document.title || '',
+      url: location.href,
+      readyState: document.readyState || 'unknown',
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        dpr: window.devicePixelRatio || 1,
+      },
+      counts: {
+        elements: elementResult.totalMatches || elements.length,
+        forms: formResult.totalMatches || forms.length,
+        overlays: overlayResult.totalMatches || overlays.length,
+        iframes: iframeResult.totalMatches || iframes.length,
+        textBlocks: text.totalMatches || text.blocks.length,
+      },
+      elements,
+      forms,
+      overlays,
+      iframes,
+      textBlocks: text.blocks,
+      truncated: {
+        elements: elementResult.truncated === true,
+        forms: formResult.truncated === true,
+        overlays: overlayResult.truncated === true || overlays.length >= 10,
+        iframes: iframeResult.truncated === true,
+        textBlocks: text.truncated === true,
+      },
+      refMap,
+    };
+  }
+
   function pushTraversalChildren(stack, node) {
     try {
       const children =
@@ -1020,6 +1363,7 @@
       if (
         request &&
         (request.action === 'chrome_read_page_ping' ||
+          request.action === 'chrome_scan_compact_ping' ||
           request.action === 'chrome_query_elements_ping' ||
           request.action === 'chrome_get_element_html_ping')
       ) {
@@ -1302,6 +1646,22 @@
         }
         sendResponse({ success: true, ...result });
         return true;
+      }
+      if (request && request.action === 'scanCompact') {
+        try {
+          const result = scanCompactPage({
+            maxElements: request.maxElements,
+            maxTextBlocks: request.maxTextBlocks,
+            includeTextBlocks: request.includeTextBlocks,
+            includeIframes: request.includeIframes,
+            includeCoordinates: request.includeCoordinates,
+          });
+          sendResponse({ success: true, ...result });
+          return true;
+        } catch (e) {
+          sendResponse({ success: false, error: String(e && e.message ? e.message : e) });
+          return true;
+        }
       }
       if (request && request.action === 'queryElements') {
         try {
