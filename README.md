@@ -27,6 +27,9 @@ mcp-chrome-community is a Chrome extension-based **Model Context Protocol (MCP) 
 ## ✨ Featured Addition
 
 - **A New Visual Editor for Claude Code & Codex**, for more detail here: [VisualEditor](docs/VisualEditor.md)
+- **Real-browser agent toolset**: page reading, element querying, JavaScript execution, CDP-driven input, screenshots, network capture, console evidence, upload/download status checks, and more.
+- **More reliable tab/window control**: frame enumeration, new-tab waiting, tab groups, background screenshots, per-client tab reuse, and `chrome_health` version checks.
+- **Better Claude Code / Codex ergonomics**: `wait_for` / `assert`, `read_page`, `query_elements`, `computer`, `clipboard`, and record/replay tools reduce ad-hoc JavaScript and repeated guessing.
 
 ## ✨ Core Features
 
@@ -37,8 +40,18 @@ mcp-chrome-community is a Chrome extension-based **Model Context Protocol (MCP) 
 - 🏎 **Cross-Tab**: Cross-tab context
 - 🧠 **Semantic Search**: Built-in vector database for intelligent browser tab content discovery
 - 🔍 **Smart Content Analysis**: AI-powered text extraction and similarity matching
-- 🌐 **25+ Tools**: Support for screenshots, network monitoring, interactive operations, bookmark management, browsing history, and 25+ other tools
+- 🌐 **35+ Tools**: Support for screenshots, network monitoring, interactions, bookmarks, browsing history, waits/assertions, debug evidence, upload/download status, tab groups, and record/replay
 - 🚀 **SIMD-Accelerated AI**: Custom WebAssembly SIMD optimization for 4-8x faster vector operations
+
+## ✅ Current Key Capabilities
+
+- Page reading: `chrome_scan_compact`, `chrome_read_page`, `chrome_query_elements`, `chrome_get_element_html`, and `chrome_get_web_content`, with compact scans, refs, `frameId`, `frameUrl`, local DOM reads, visible/hidden elements, and open Shadow DOM queries.
+- Page operations: `chrome_click_element`, `chrome_fill_or_select`, `chrome_keyboard`, and `chrome_computer`, with coordinates, selectors, refs, drag, scroll, typing, waits, and screenshot-assisted actions.
+- Waits and checks: `chrome_wait_for`, `chrome_assert`, and `chrome_wait_for_tab` cover elements, text, URL, title, JavaScript predicates, network requests, network idle, and downloads.
+- Debugging: `chrome_console`, `chrome_collect_debug_evidence`, `chrome_javascript`, `chrome_screenshot`, `chrome_cdp_command`, and `chrome_cdp_batch` expose logs, runtime errors, screenshots, recent network evidence, and raw CDP.
+- Network and files: `chrome_network_capture`, `chrome_network_request`, `chrome_upload_file`, `chrome_get_upload_status`, and `chrome_handle_download` cover capture, browser-context requests, upload status, drag/drop upload, and download status.
+- Browser data: `chrome_history`, `chrome_bookmark_*`, `chrome_tab_group`, and `chrome_clipboard` cover history, bookmarks, tab groups, and clipboard operations.
+- Version and real-browser checks: `chrome_health` reports extension version, bridge version, schema hash, tool count, and current browser state; real-browser tests cover forms, async updates, console, new tabs, clipboard, drag/drop, and tab groups.
 
 ## 🆚 Comparison with Similar Projects
 
@@ -173,55 +186,85 @@ Example config in Augment:
 Complete tool list: [Complete Tool List](docs/TOOLS.md)
 
 <details>
-<summary><strong>📊 Browser Management (6 tools)</strong></summary>
+<summary><strong>📊 Browser and Tabs</strong></summary>
 
 - `get_windows_and_tabs` - List all browser windows and tabs
-- `chrome_navigate` - Navigate to URLs and control viewport
+- `chrome_health` - Show extension, bridge, tool count, and current browser status
+- `chrome_list_frames` - List iframes in the current tab
+- `chrome_wait_for_tab` - Wait for a new tab or an existing matching tab
+- `chrome_navigate` - Open URLs, refresh, go back/forward, or create a new window
 - `chrome_switch_tab` - Switch the current active tab
-- `chrome_close_tabs` - Close specific tabs or windows
-- `chrome_go_back_or_forward` - Browser navigation control
-- `chrome_inject_script` - Inject content scripts into web pages
-- `chrome_send_command_to_inject_script` - Send commands to injected content scripts
+- `chrome_close_tabs` - Close tabs
+- `chrome_tab_group` - Create, name, collapse, move, or ungroup Chrome tab groups
 </details>
 
 <details>
-<summary><strong>📸 Screenshots & Visual (1 tool)</strong></summary>
+<summary><strong>🔍 Page Reading and Locating</strong></summary>
 
-- `chrome_screenshot` - Advanced screenshot capture with element targeting, full-page support, and custom dimensions
+- `chrome_read_page` - Read visible page content and interactive elements
+- `chrome_scan_compact` - Low-output page scan with titles, forms, buttons, inputs, dialogs, iframes, and important text blocks
+- `chrome_query_elements` - Query elements with CSS/XPath, including hidden elements and frames
+- `chrome_get_element_html` - Get HTML for a specific element
+- `chrome_get_web_content` - Extract page text or HTML
+- `chrome_get_interactive_elements` - Get interactive page elements
+- `search_tabs_content` - Semantic search across opened tabs
 </details>
 
 <details>
-<summary><strong>🌐 Network Monitoring (4 tools)</strong></summary>
+<summary><strong>🎯 Page Operations</strong></summary>
 
-- `chrome_network_capture_start/stop` - webRequest API network capture
-- `chrome_network_debugger_start/stop` - Debugger API with response bodies
-- `chrome_network_request` - Send custom HTTP requests
+- `chrome_click_element` - Click elements by selector, XPath, ref, or coordinates
+- `chrome_fill_or_select` - Fill inputs, textarea, select, checkbox, and radio controls
+- `chrome_keyboard` - Send keyboard input and shortcuts
+- `chrome_computer` - Combined mouse, keyboard, scroll, drag, and screenshot operations
+- `chrome_clipboard` - Read/write clipboard, paste text, and copy selected text
+- `chrome_request_element_selection` - Ask the user to pick an element when automation cannot locate it reliably
 </details>
 
 <details>
-<summary><strong>🔍 Content Analysis (5 tools)</strong></summary>
+<summary><strong>⏱️ Waits and Assertions</strong></summary>
 
-- `search_tabs_content` - AI-powered semantic search across browser tabs
-- `chrome_get_web_content` - Extract HTML/text content from pages
-- `chrome_get_interactive_elements` - Find clickable elements
-- `chrome_console` - Capture and retrieve console output from browser tabs
-- `chrome_collect_debug_evidence` - Bundle screenshot, console/runtime errors, and recent network evidence
+- `chrome_wait_for` - Wait for elements, text, URL, title, JS predicates, network requests, network idle, or downloads
+- `chrome_assert` - Assert the same conditions with a clear failure response
 </details>
 
 <details>
-<summary><strong>🎯 Interaction (3 tools)</strong></summary>
+<summary><strong>📸 Screenshots, Recording, and Performance</strong></summary>
 
-- `chrome_click_element` - Click elements using CSS selectors
-- `chrome_fill_or_select` - Fill forms and select options
-- `chrome_keyboard` - Simulate keyboard input and shortcuts
+- `chrome_screenshot` - Screenshot capture with full-page, element, base64, and file output support
+- `chrome_gif_recorder` - Record tab operations and export a GIF
+- `performance_start_trace` - Start a performance trace
+- `performance_stop_trace` - Stop a performance trace
+- `performance_analyze_insight` - Return lightweight trace analysis
 </details>
 
 <details>
-<summary><strong>📚 Data Management (5 tools)</strong></summary>
+<summary><strong>🌐 Network, Files, and Dialogs</strong></summary>
 
-- `chrome_history` - Search browser history with time filters
-- `chrome_bookmark_search` - Find bookmarks by keywords
-- `chrome_bookmark_add` - Add new bookmarks with folder support
+- `chrome_network_capture` - Capture requests, optionally with response bodies
+- `chrome_network_request` - Send HTTP requests with browser context
+- `chrome_upload_file` - Upload local, URL, or base64 files to page file inputs
+- `chrome_get_upload_status` - Query upload selection status
+- `chrome_handle_download` - Wait, query, or list downloads
+- `chrome_handle_dialog` - Handle alert, confirm, and prompt dialogs
+</details>
+
+<details>
+<summary><strong>🧰 Debugging and Scripts</strong></summary>
+
+- `chrome_javascript` - Execute JavaScript in a page and return JSON-compatible results
+- `chrome_cdp_command` - Send one raw Chrome DevTools Protocol command
+- `chrome_cdp_batch` - Send multiple CDP commands in one call
+- `chrome_console` - Read console logs and runtime exceptions
+- `chrome_collect_debug_evidence` - Collect page content, screenshot, console, exceptions, and recent network evidence
+</details>
+
+<details>
+<summary><strong>📚 Browser Data</strong></summary>
+
+- `chrome_history` - Search browsing history with time filters
+- `chrome_bookmark_search` - Search bookmarks by keywords
+- `chrome_bookmark_add` - Add bookmarks with folder support
 - `chrome_bookmark_delete` - Delete bookmarks
 </details>
 
@@ -310,7 +353,29 @@ We welcome contributions! Please see [CONTRIBUTING.md](docs/CONTRIBUTING.md) for
 
 ## 🚧 Future Roadmap
 
-The next community-fork milestone is not "add as many tools as possible". The priority is to make the existing browser capabilities more reliable, faster, and easier for agents to use correctly.
+GenericAgent-inspired browser automation pieces have already been folded in: compact page scanning, raw CDP commands, CDP batches, frame-aware DOM queries, background CDP screenshots, complex upload handling, and clearer tool descriptions.
+
+Remaining work:
+
+- Continue `chrome_javascript` with CDP execution-context support to reduce manual CDP calls for cross-origin iframe cases.
+- Export canvas/img content directly as base64 to reduce screenshot-cropping mistakes.
+- Move record/replay from "works" to stable and reusable.
+- Move automated tasks from one-off runs to publishable, debuggable, schedulable tasks.
+- Keep Chrome / Edge stable first, then evaluate Firefox.
+- Add clearer authentication and tool-permission tiers.
+
+### Windows desktop-level control, later
+
+This can borrow ideas from GA's `ljqCtrl`, but it should be a separate desktop tool group instead of being mixed into browser tools.
+
+- Candidate tools: `desktop_screenshot`, `desktop_click`, `desktop_move`, `desktop_key`, `desktop_type`, `desktop_window_list`, `desktop_activate_window`, `desktop_find_image`.
+- On Windows, prefer `win32api`, `win32gui`, `win32con`, `mss`, and `Pillow`; use `pyautogui` only when needed.
+- Coordinates must clearly state physical pixels and DPI scaling to avoid shifted clicks.
+- Use it only for file pickers, OS dialogs, non-browser apps, Chrome permission popups, and UI that extension APIs cannot operate.
+
+### Completed plans already folded into current features
+
+The completed historical roadmap is kept below for traceability.
 
 ### 2026-04-25 v1.1 Priorities
 

@@ -233,6 +233,13 @@ Agent-friendly defaults:
 - `storeBase64` returns a compressed inline image sized for model input
 - if `storeBase64=true` and `savePng` is omitted, the tool does **not** save a file by default
 - set `savePng=true` explicitly if you want both inline data and a downloaded PNG file
+- with `background=true`, viewport and default full-page screenshots use CDP first and do not need to foreground the tab; element screenshots and custom-sized full-page screenshots fall back to the helper path
+
+Coordinate notes:
+
+- Screenshots, `chrome_computer` coordinates, and CDP mouse coordinates use current viewport CSS pixels.
+- If `storeBase64` uses `maxOutputWidth` / `maxOutputHeight`, the returned image may be resized; do not click with coordinates taken from the resized image directly.
+- Layout changes, scrolling, and the Chrome debugger attach infobar can shift coordinates. Recapture the current viewport before precise clicks.
 
 **Parameters**:
 
@@ -401,6 +408,26 @@ Example:
 
 Response contains `pageContent` (text tree), `viewport`, and a `refMapCount` summary. Use `chrome_get_interactive_elements` or your own logic to act on returned refs.
 
+### `chrome_scan_compact`
+
+Low-output page scan for an agent's first look at a page. It returns title, URL, important text blocks, forms, buttons, inputs, selects, dialogs/overlays, iframes, and refs that can be reused by follow-up tools.
+
+**Parameters**:
+
+- `tabId` / `windowId` / `frameId` (optional): choose target tab, window, or frame
+- `maxElements` (number, optional): max interactive/form/dialog/iframe elements (default: `80`, max: `200`)
+- `maxTextBlocks` (number, optional): max heading/paragraph blocks (default: `20`, max: `80`)
+- `includeTextBlocks` (boolean, optional): include important text blocks (default: `true`)
+- `includeIframes` (boolean, optional): include iframe summaries (default: `true`)
+- `includeCoordinates` (boolean, optional): include element center coordinates (default: `true`)
+
+**Response highlights**:
+
+- `frames[]`: compact scan results per frame, with `frameId` on elements
+- `elements[]`: buttons, links, inputs, selects, custom role elements, and similar controls
+- `forms[]`, `overlays[]`, `iframes[]`, `textBlocks[]`
+- `ref`: reusable with `chrome_click_element`, `chrome_fill_or_select`, and `chrome_computer`
+
 ### `chrome_query_elements`
 
 Query DOM elements directly and return a structured element list. Use this when `chrome_read_page` is too summary-oriented and you need exact matches, hidden nodes, attributes, or per-element refs.
@@ -426,7 +453,8 @@ Query DOM elements directly and return a structured element list. Use this when 
 
 **Response highlights**:
 
-- `elements[]`: each item includes `ref`, `selectorHint`, `text`, `role`, `attributes`, `visible`, `enabled`, `tagName`, `frameId`
+- `elements[]`: each item includes `ref`, `selectorHint`, `text`, `role`, `attributes`, `visible`, `enabled`, `tagName`, `frameId`, and `frameUrl` when available
+- `frames[]`: frames searched by this call, with `frameId` and available `url`
 - `matchedFrameIds`: frames that returned matches
 - `truncated`: whether the result hit the limit or scan cap
 
@@ -458,6 +486,26 @@ Get the real DOM HTML for a single element. Accepts a `ref` from `chrome_read_pa
 - `htmlLength`: original HTML length before truncation
 - `truncated`: whether the HTML was shortened
 - `ref`, `selectorHint`, `attributes`, `visible`, `enabled`, `tagName`, `frameId`
+
+### `chrome_javascript`
+
+Execute JavaScript in a browser tab and return the result. DOM events created here are synthetic (`event.isTrusted=false`); if a site ignores them, use `chrome_computer` or CDP input events.
+
+Notes:
+
+- Pass `frameId` to execute in a specific iframe through `chrome.scripting.executeScript` in an isolated world.
+- For cross-origin iframes or page-main-world execution, use `Page.getFrameTree + Page.createIsolatedWorld` through CDP.
+- Output is sanitized and truncated by default.
+
+### `chrome_cdp_command`
+
+Send one raw Chrome DevTools Protocol command to a tab. Useful for `Runtime.evaluate`, `DOM.getDocument`, `DOM.querySelector`, `DOM.getBoxModel`, `Input.dispatchMouseEvent`, `Input.insertText`, `Page.captureScreenshot`, `Page.getFrameTree`, and `Page.createIsolatedWorld`.
+
+For trusted clicks, get center coordinates with `DOM.getBoxModel`, then dispatch `mouseMoved -> mousePressed -> mouseReleased`. Use `bringToFront` if a background tab is throttled, and recapture coordinates after the first debugger attach if Chrome shows the debugger infobar.
+
+### `chrome_cdp_batch`
+
+Run multiple CDP commands in one shared debugger session. This reduces MCP round trips for flows like `DOM.getDocument -> DOM.querySelector -> DOM.getBoxModel -> Input.dispatchMouseEvent`.
 
 ### `chrome_console`
 
@@ -864,18 +912,33 @@ Wait for a browser download, fetch the latest matching download status, or list 
 
 Upload files into `input[type="file"]` and return a stable `uploadId` plus browser-side selection details.
 
+Default `fileInput` mode checks whether the target is a file input, whether it is disabled, whether multiple files are allowed, and whether `accept` may not match. After setting files, it dispatches `input`, `change`, and `blur`, then reads browser-side selection state again.
+
+Set `mode="dragDrop"` to create a temporary file input, attach the file with CDP, put the resulting `File` objects into a `DataTransfer`, and dispatch `dragenter` / `dragover` / `drop` to the target drop zone.
+
+If the page creates the file input only after clicking an upload button, pass `triggerSelector`; the tool clicks it first, then waits for `selector`.
+
 **Parameters**:
 
-- `selector` (string, required): target file input selector
+- `selector` (string, required): target file input selector; with `mode="dragDrop"`, this is the drop zone selector
+- `mode` (string, optional): `fileInput` or `dragDrop` (default: `fileInput`)
+- `triggerSelector` (string, optional): upload button/control to click before waiting for the file input
+- `waitForInputMs` (number, optional): wait time after `triggerSelector` click (default: `3000`, max: `10000`)
 - `filePath` / `fileUrl` / `base64Data`: file source (provide one)
 - `fileName` (string, optional): name used when the source is `fileUrl` or `base64Data`
 - `tabId` / `windowId` (optional): choose the target tab
+- `multiple` (boolean, optional): whether the target input accepts multiple files
 
 **Response highlights**:
 
 - `uploadId`: session id for follow-up status checks
 - `status`: browser-side execution result (`completed` on success)
+- `mode`: actual upload mode
+- `triggerSelector` / `triggerResult`: trigger click and file-input wait result
 - `selectedFiles`, `fileCount`, `inputState`
+- `eventsDispatched`: dispatched events such as `input`, `change`, `blur`
+- `dropAccepted`: whether the drop event was not canceled in `dragDrop` mode
+- `acceptMismatch` / `warnings`: possible accept mismatch or suspicious selection state
 - `startedAt`, `completedAt`
 
 ### `chrome_get_upload_status`
