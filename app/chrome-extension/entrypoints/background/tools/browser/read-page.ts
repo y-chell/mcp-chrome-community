@@ -71,14 +71,7 @@ class ReadPageTool extends BaseBrowserToolExecutor {
   async execute(args: ReadPageParams): Promise<ToolResult> {
     const { filter, depth, refId } = args || {};
 
-    // Validate refId parameter
     const focusRefId = typeof refId === 'string' ? refId.trim() : '';
-    if (refId !== undefined && !focusRefId) {
-      return createErrorResponse(
-        `${ERROR_MESSAGES.INVALID_PARAMETERS}: refId must be a non-empty string`,
-      );
-    }
-
     // Validate depth parameter
     const requestedDepth = depth === undefined ? undefined : Number(depth);
     if (requestedDepth !== undefined && (!Number.isInteger(requestedDepth) || requestedDepth < 0)) {

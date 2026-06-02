@@ -134,17 +134,16 @@ class ClickTool extends BaseBrowserToolExecutor {
         targetFrameId,
       );
 
-      // Determine actual click method used
-      let clickMethod: string;
-      if (coordinates) {
-        clickMethod = 'coordinates';
-      } else if (finalRef) {
-        clickMethod = 'ref';
-      } else if (finalSelector) {
-        clickMethod = 'selector';
-      } else {
-        clickMethod = 'unknown';
-      }
+      const clickMethod =
+        typeof result.elementInfo?.clickMethod === 'string'
+          ? result.elementInfo.clickMethod
+          : coordinates
+            ? 'coordinates'
+            : finalRef
+              ? 'ref'
+              : finalSelector
+                ? 'selector'
+                : 'unknown';
 
       return {
         content: [

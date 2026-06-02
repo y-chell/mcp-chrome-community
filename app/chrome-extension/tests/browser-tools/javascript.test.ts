@@ -41,7 +41,7 @@ describe('javascript tool', () => {
     };
   });
 
-  it('runs in a specific frame with chrome.scripting when frameId is provided', async () => {
+  it('runs in a specific child frame with chrome.scripting when non-zero frameId is provided', async () => {
     const result = await javascriptTool.execute({
       tabId,
       frameId: 7,
@@ -61,6 +61,39 @@ describe('javascript tool', () => {
       tabId,
       frameId: 7,
       engine: 'scripting',
+    });
+  });
+
+  it('treats frameId 0 as the top frame and uses CDP', async () => {
+    (chrome.debugger.getTargets as any) = vi.fn().mockResolvedValue([]);
+    (chrome.debugger.attach as any) = vi.fn().mockResolvedValue(undefined);
+    (chrome.debugger.detach as any) = vi.fn().mockResolvedValue(undefined);
+    (chrome.debugger.sendCommand as any) = vi
+      .fn()
+      .mockImplementation(async (_target: any, method: string) => {
+        if (method === 'Runtime.evaluate') {
+          return { result: { type: 'object', value: { from: 'top-frame' } } };
+        }
+        return {};
+      });
+
+    const result = await javascriptTool.execute({
+      tabId,
+      frameId: 0,
+      code: 'return { from: "top-frame" }',
+    });
+
+    expect(result.isError).toBe(false);
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+    expect(chrome.debugger.sendCommand).toHaveBeenCalledWith(
+      { tabId },
+      'Runtime.evaluate',
+      expect.objectContaining({ returnByValue: true }),
+    );
+    expect(parseJsonResult(result)).toMatchObject({
+      success: true,
+      tabId,
+      engine: 'cdp',
     });
   });
 });

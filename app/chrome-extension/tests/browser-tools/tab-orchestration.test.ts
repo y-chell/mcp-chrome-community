@@ -122,6 +122,39 @@ describe('tab / frame orchestration tools', () => {
     });
   });
 
+  it('does not treat windowId 0 as a real Chrome window filter', async () => {
+    (chrome.tabs.query as any) = vi.fn().mockResolvedValue([
+      {
+        id: 31,
+        windowId: 8,
+        openerTabId: 9,
+        url: 'about:blank',
+        title: 'about:blank',
+        status: 'complete',
+        active: true,
+        index: 1,
+      },
+    ]);
+
+    const result = await waitForTabTool.execute({
+      openerTabId: 9,
+      windowId: 0,
+      urlPattern: 'about:blank',
+      timeoutMs: 500,
+    } as any);
+
+    expect(result.isError).toBe(false);
+    expect(parseJsonResult(result)).toMatchObject({
+      success: true,
+      tool: 'chrome_wait_for_tab',
+      tab: {
+        tabId: 31,
+        windowId: 8,
+        matchedBy: 'existing',
+      },
+    });
+  });
+
   it('waits for a newly created tab to finish loading', async () => {
     let createdListener: ((tab: chrome.tabs.Tab) => void) | undefined;
     let updatedListener:

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OFFSCREEN_MESSAGE_TYPES, MessageTarget } from '@/common/message-types';
 import { computerTool } from '@/entrypoints/background/tools/browser/computer';
 import { clipboardTool } from '@/entrypoints/background/tools/browser/clipboard';
-import { fillTool } from '@/entrypoints/background/tools/browser/interaction';
+import { clickTool, fillTool } from '@/entrypoints/background/tools/browser/interaction';
 import { tabGroupTool } from '@/entrypoints/background/tools/browser/tab-group';
 import { offscreenManager } from '@/utils/offscreen-manager';
 
@@ -274,6 +274,33 @@ describe('high-value page operation tools', () => {
         title: 'Research',
         tabCount: 2,
         tabIds: [10, 11],
+      },
+    });
+  });
+
+  it('reports the actual helper click method when coordinates are also present', async () => {
+    vi.spyOn(clickTool as any, 'injectContentScript').mockResolvedValue(undefined);
+    vi.spyOn(clickTool as any, 'sendMessageToTab').mockResolvedValue({
+      message: 'Element clicked successfully',
+      elementInfo: {
+        clickMethod: 'ref',
+        ref: 'ref_4',
+      },
+      navigationOccurred: false,
+    });
+
+    const result = await clickTool.execute({
+      tabId,
+      ref: 'ref_4',
+      coordinates: { x: 0, y: 0 },
+    });
+
+    expect(result.isError).toBe(false);
+    expect(parseJsonResult(result)).toMatchObject({
+      success: true,
+      clickMethod: 'ref',
+      elementInfo: {
+        clickMethod: 'ref',
       },
     });
   });

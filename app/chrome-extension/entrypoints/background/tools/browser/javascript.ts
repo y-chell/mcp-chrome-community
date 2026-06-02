@@ -443,8 +443,9 @@ class JavaScriptTool extends BaseBrowserToolExecutor {
 
       const warnings: string[] = [];
       const frameId = typeof args.frameId === 'number' ? args.frameId : undefined;
+      const useFrameScopedScripting = typeof frameId === 'number' && frameId !== 0;
 
-      if (typeof frameId === 'number') {
+      if (useFrameScopedScripting) {
         warnings.push(
           'frameId execution uses chrome.scripting.executeScript in ISOLATED world. For page-main-world or cross-origin CDP contexts, use chrome_cdp_command/chrome_cdp_batch.',
         );

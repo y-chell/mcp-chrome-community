@@ -182,8 +182,13 @@ class WaitForTabTool extends BaseBrowserToolExecutor {
     return Math.max(100, Math.min(Number(args?.timeoutMs ?? 10000), 120000));
   }
 
+  private normalizeWindowId(windowId?: number): number | undefined {
+    return typeof windowId === 'number' && windowId > 0 ? windowId : undefined;
+  }
+
   private matchesBasic(tab: chrome.tabs.Tab, args: WaitForTabParams): boolean {
-    if (typeof args.windowId === 'number' && tab.windowId !== args.windowId) return false;
+    const windowId = this.normalizeWindowId(args.windowId);
+    if (typeof windowId === 'number' && tab.windowId !== windowId) return false;
     if (typeof args.openerTabId === 'number' && tab.openerTabId !== args.openerTabId) return false;
     if (typeof args.active === 'boolean' && tab.active !== args.active) return false;
     return true;
