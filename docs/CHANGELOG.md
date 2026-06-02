@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Real-browser release acceptance coverage**: `pnpm smoke:stdio -- --real-browser --verbose` now exercises hover, drag/drop, and tab grouping in the local fixture flow, and reports the covered interaction metadata in its JSON output
 - **Release smoke gate**: the release workflow now runs `pnpm smoke:stdio` after building the native server, so published releases fail early if stdio tool discovery breaks
 
+## [v1.0.10] - 2026-06-03
+
+### Fixed
+
+- **Top-frame JavaScript execution**: `chrome_javascript` now treats `frameId: 0` as the top frame and uses CDP, avoiding unnecessary `chrome.scripting.executeScript` fallback failures
+- **Agent placeholder inputs**: `chrome_read_page` now treats empty `refId` values as omitted, and `chrome_wait_for_tab` ignores `windowId: 0` instead of filtering out real Chrome windows
+- **Click method reporting**: `chrome_click_element` now reports the actual helper click method consistently at the top level and in `elementInfo`
+
 ## [v1.0.9] - 2026-06-01
 
 ### Added
