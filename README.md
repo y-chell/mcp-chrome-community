@@ -171,11 +171,22 @@ Example final path:
       "command": "node",
       "args": [
         "/path/to/global/node_modules/mcp-chrome-community-bridge/dist/mcp/mcp-server-stdio.js"
-      ]
+      ],
+      "env": {
+        "CHROME_MCP_TOOL_PROFILE": "core"
+      }
     }
   }
 }
 ```
+
+STDIO supports `CHROME_MCP_TOOL_PROFILE` to control how many tools are advertised to the client:
+
+- `full`: advertises the original 41 tools. This is the backward-compatible default.
+- `core`: advertises 12 common browser tools plus 3 catalog tools. Recommended for routine Codex and Claude Code browsing.
+- `search`: advertises health, tab listing, and 3 catalog tools. Recommended when the client connects to several MCP servers.
+
+The `core` and `search` profiles expose `chrome_search_tools`, `chrome_describe_tool`, and `chrome_call_tool`. Hidden tools remain available through catalog search and proxy calls without restarting the server or changing profiles.
 
 Example config in Augment:
 

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **STDIO tool profiles**: added backward-compatible `full`, compact `core`, and search-first `search` catalogs through `CHROME_MCP_TOOL_PROFILE`
+- **On-demand tool catalog**: added `chrome_search_tools`, `chrome_describe_tool`, and `chrome_call_tool` so compact profiles can discover and invoke hidden browser tools without restarting the server
+- **Profile smoke coverage**: `pnpm smoke:stdio -- --profile <full|core|search>` now validates each advertised catalog and the search/describe meta tools
 - **Real-browser release acceptance coverage**: `pnpm smoke:stdio -- --real-browser --verbose` now exercises hover, drag/drop, and tab grouping in the local fixture flow, and reports the covered interaction metadata in its JSON output
 - **Release smoke gate**: the release workflow now runs `pnpm smoke:stdio` after building the native server, so published releases fail early if stdio tool discovery breaks
 

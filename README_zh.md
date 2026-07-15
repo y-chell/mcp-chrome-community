@@ -169,11 +169,22 @@ mcp-chrome-community-bridge/dist/mcp/mcp-server-stdio.js
       "command": "node",
       "args": [
         "/path/to/global/node_modules/mcp-chrome-community-bridge/dist/mcp/mcp-server-stdio.js"
-      ]
+      ],
+      "env": {
+        "CHROME_MCP_TOOL_PROFILE": "core"
+      }
     }
   }
 }
 ```
+
+STDIO 支持通过 `CHROME_MCP_TOOL_PROFILE` 控制向客户端公布的工具数量：
+
+- `full`：公布原有全部 41 个工具，默认值，兼容旧配置。
+- `core`：公布 12 个常用浏览器工具和 3 个目录工具，适合 Codex、Claude Code 等日常浏览任务。
+- `search`：只公布健康检查、标签页列表和 3 个目录工具，适合同时启用多个 MCP 的客户端。
+
+`core` 和 `search` 提供 `chrome_search_tools`、`chrome_describe_tool`、`chrome_call_tool`。未直接公布的工具仍可先搜索、查看参数，再通过 `chrome_call_tool` 调用，无需重启服务或切换档位。
 
 比如：在augment中的配置如下：
 

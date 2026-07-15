@@ -22,9 +22,24 @@ import {
   getChromeMcpHost,
   getChromeMcpPort,
 } from '../constant';
+import {
+  getExposedToolSchemas,
+  handleProfileMetaTool,
+  resolveToolProfile,
+  type ChromeMcpToolProfile,
+} from './tool-profile.js';
 
 let stdioMcpServer: Server | null = null;
 let mcpClient: Client | null = null;
+const toolProfileResolution = resolveToolProfile();
+const toolProfile = toolProfileResolution.profile;
+const exposedToolSchemas = getExposedToolSchemas(toolProfile);
+
+if (toolProfileResolution.invalidValue) {
+  console.error(
+    `Invalid CHROME_MCP_TOOL_PROFILE="${toolProfileResolution.invalidValue}"; using "full". Expected full, core, or search.`,
+  );
+}
 
 // Read configuration from stdio-config.json
 const loadConfig = () => {
@@ -105,7 +120,7 @@ export const ensureMcpClient = async () => {
 
 export const setupTools = (server: Server) => {
   // List tools handler
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOL_SCHEMAS }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: exposedToolSchemas }));
 
   // Call tool handler
   server.setRequestHandler(CallToolRequestSchema, async (request) =>
@@ -120,6 +135,48 @@ export const setupTools = (server: Server) => {
 };
 
 const handleToolCall = async (name: string, args: any): Promise<CallToolResult> => {
+  const metaResult = await handleProfileMetaTool(name, args, toolProfile, callBrowserTool);
+  if (metaResult) return metaResult;
+  return callBrowserTool(name, args);
+};
+
+const appendStdioProfileMetadata = (
+  result: CallToolResult,
+  profile: ChromeMcpToolProfile,
+): CallToolResult => {
+  if (result.isError) return result;
+  const first = result.content?.[0];
+  if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
+
+  try {
+    const parsed = JSON.parse(first.text);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return result;
+    return {
+      ...result,
+      content: [
+        {
+          ...first,
+          text: JSON.stringify({
+            ...parsed,
+            stdio: {
+              profile,
+              exposedToolCount: exposedToolSchemas.length,
+              catalogToolCount: TOOL_SCHEMAS.length,
+            },
+          }),
+        },
+        ...(result.content || []).slice(1),
+      ],
+    };
+  } catch {
+    return result;
+  }
+};
+
+const callBrowserTool = async (
+  name: string,
+  args: Record<string, unknown>,
+): Promise<CallToolResult> => {
   try {
     const client = await ensureMcpClient();
     if (!client) {
@@ -130,7 +187,10 @@ const handleToolCall = async (name: string, args: any): Promise<CallToolResult> 
     const result = await client.callTool({ name, arguments: args }, undefined, {
       timeout: DEFAULT_CALL_TIMEOUT_MS,
     });
-    return result as CallToolResult;
+    const callResult = result as CallToolResult;
+    return name === 'chrome_health'
+      ? appendStdioProfileMetadata(callResult, toolProfile)
+      : callResult;
   } catch (error: any) {
     return {
       content: [

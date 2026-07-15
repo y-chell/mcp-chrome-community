@@ -16,6 +16,7 @@ type JsonRpcMessage = {
 type SmokeOptions = {
   serverPath: string;
   timeoutMs: number;
+  profile: 'full' | 'core' | 'search';
   callHealth: boolean;
   realBrowser: boolean;
   verbose: boolean;
@@ -45,11 +46,34 @@ const DEFAULT_REQUIRED_TOOLS = [
   'chrome_tab_group',
 ];
 
+const REQUIRED_TOOLS_BY_PROFILE: Record<SmokeOptions['profile'], string[]> = {
+  full: DEFAULT_REQUIRED_TOOLS,
+  core: [
+    'chrome_search_tools',
+    'chrome_describe_tool',
+    'chrome_call_tool',
+    'chrome_health',
+    'chrome_navigate',
+    'chrome_read_page',
+    'chrome_javascript',
+    'chrome_wait_for',
+  ],
+  search: [
+    'chrome_search_tools',
+    'chrome_describe_tool',
+    'chrome_call_tool',
+    'chrome_health',
+    'get_windows_and_tabs',
+  ],
+};
+
 function parseArgs(argv: string[]): SmokeOptions {
   const defaultServerPath = path.resolve(__dirname, '..', 'mcp', 'mcp-server-stdio.js');
+  let requiredToolsOverridden = false;
   const options: SmokeOptions = {
     serverPath: defaultServerPath,
     timeoutMs: 10000,
+    profile: 'full',
     callHealth: false,
     realBrowser: false,
     verbose: false,
@@ -58,7 +82,9 @@ function parseArgs(argv: string[]): SmokeOptions {
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === '--server') {
+    if (arg === '--') {
+      continue;
+    } else if (arg === '--server') {
       const value = argv[index + 1];
       if (!value) throw new Error('--server requires a path');
       options.serverPath = path.resolve(value);
@@ -67,6 +93,13 @@ function parseArgs(argv: string[]): SmokeOptions {
       const value = Number(argv[index + 1]);
       if (!Number.isFinite(value) || value <= 0) throw new Error('--timeout-ms must be positive');
       options.timeoutMs = value;
+      index += 1;
+    } else if (arg === '--profile') {
+      const value = argv[index + 1];
+      if (value !== 'full' && value !== 'core' && value !== 'search') {
+        throw new Error('--profile must be full, core, or search');
+      }
+      options.profile = value;
       index += 1;
     } else if (arg === '--call-health') {
       options.callHealth = true;
@@ -83,6 +116,7 @@ function parseArgs(argv: string[]): SmokeOptions {
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
+      requiredToolsOverridden = true;
       index += 1;
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
@@ -90,6 +124,10 @@ function parseArgs(argv: string[]): SmokeOptions {
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
+  }
+
+  if (!requiredToolsOverridden) {
+    options.requiredTools = [...REQUIRED_TOOLS_BY_PROFILE[options.profile]];
   }
 
   return options;
@@ -101,6 +139,7 @@ function printHelp() {
 Options:
   --server <path>          Path to mcp-server-stdio.js. Defaults to built dist server.
   --timeout-ms <ms>        Per-request timeout. Default: 10000.
+  --profile <name>         Tool profile: full, core, or search. Default: full.
   --require-tools <list>   Comma-separated tool names required in tools/list.
   --call-health            Also call chrome_health through the real extension/native bridge.
   --real-browser           Run a reversible real-browser fixture flow through MCP tools. Implies --verbose.
@@ -124,11 +163,15 @@ class StdioMcpClient {
   readonly child: ChildProcessWithoutNullStreams;
   stderr = '';
 
-  constructor(serverPath: string) {
+  constructor(serverPath: string, profile: SmokeOptions['profile']) {
     const nodeExecPath = resolvePreferredNodeExecPath(process.execPath);
     this.child = spawn(nodeExecPath, [serverPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      env: {
+        ...process.env,
+        CHROME_MCP_TOOL_PROFILE: profile,
+      },
     });
 
     this.child.stdout.on('data', (chunk: Buffer) => {
@@ -703,7 +746,7 @@ async function runRealBrowserSmoke(
 async function run() {
   const options = parseArgs(process.argv.slice(2));
   verboseLogging = options.verbose;
-  const client = new StdioMcpClient(options.serverPath);
+  const client = new StdioMcpClient(options.serverPath, options.profile);
 
   try {
     const init = await client.request(
@@ -728,11 +771,55 @@ async function run() {
       throw new Error(`Missing required tools: ${missingTools.join(', ')}`);
     }
 
+    let profileCatalog: any = null;
+    if (options.profile !== 'full') {
+      const searchResult = await callMcpTool(
+        client,
+        'chrome_search_tools',
+        { query: 'gif recorder', limit: 5 },
+        options.timeoutMs,
+      );
+      const gifResult = searchResult?.results?.find(
+        (item: { name?: string }) => item.name === 'chrome_gif_recorder',
+      );
+      if (!gifResult) {
+        throw new Error(`chrome_search_tools did not find chrome_gif_recorder`);
+      }
+
+      const describeResult = await callMcpTool(
+        client,
+        'chrome_describe_tool',
+        { name: 'chrome_gif_recorder' },
+        options.timeoutMs,
+      );
+      if (describeResult?.tool?.name !== 'chrome_gif_recorder') {
+        throw new Error(`chrome_describe_tool returned an unexpected payload`);
+      }
+
+      profileCatalog = {
+        searchResult: gifResult,
+        describedTool: describeResult.tool.name,
+      };
+    }
+
     let health: any = null;
     if (options.callHealth) {
-      health = await callMcpTool(client, 'chrome_health', {}, options.timeoutMs);
+      health =
+        options.profile === 'full'
+          ? await callMcpTool(client, 'chrome_health', {}, options.timeoutMs)
+          : await callMcpTool(
+              client,
+              'chrome_call_tool',
+              { name: 'chrome_health', args: {} },
+              options.timeoutMs,
+            );
       if (!health?.success) {
         throw new Error(`chrome_health returned unexpected payload: ${JSON.stringify(health)}`);
+      }
+      if (health.stdio?.profile !== options.profile) {
+        throw new Error(
+          `chrome_health reported unexpected STDIO profile: ${JSON.stringify(health.stdio)}`,
+        );
       }
     }
 
@@ -746,6 +833,7 @@ async function run() {
           success: true,
           checked: {
             serverPath: options.serverPath,
+            profile: options.profile,
             toolCount: toolNames.length,
             requiredTools: options.requiredTools,
             callHealth: options.callHealth,
@@ -761,8 +849,10 @@ async function run() {
                 },
                 browser: health.browser,
                 nativeHost: health.nativeHost,
+                stdio: health.stdio,
               }
             : null,
+          profileCatalog,
           realBrowser,
         },
         null,
