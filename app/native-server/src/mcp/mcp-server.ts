@@ -1,4 +1,5 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { BRIDGE_VERSION } from '../constant';
 import { setupTools } from './register-tools';
 
 export interface McpServerContext {
@@ -10,7 +11,7 @@ export const createMcpServer = (context: McpServerContext = {}) => {
   const server = new Server(
     {
       name: 'mcp-chrome-community-server',
-      version: '1.0.9',
+      version: BRIDGE_VERSION,
     },
     {
       capabilities: {

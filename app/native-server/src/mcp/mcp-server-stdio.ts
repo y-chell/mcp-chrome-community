@@ -15,6 +15,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+  BRIDGE_VERSION,
   CHROME_MCP_HOST_ENV,
   CHROME_MCP_PORT_ENV,
   MCP_HTTP_HOST_ENV,
@@ -80,7 +81,7 @@ export const getStdioMcpServer = () => {
   stdioMcpServer = new Server(
     {
       name: 'mcp-chrome-community-stdio-server',
-      version: '1.0.9',
+      version: BRIDGE_VERSION,
     },
     {
       capabilities: {
@@ -105,7 +106,7 @@ export const ensureMcpClient = async () => {
     }
 
     mcpClient = new Client(
-      { name: 'mcp-chrome-community-proxy', version: '1.0.9' },
+      { name: 'mcp-chrome-community-proxy', version: BRIDGE_VERSION },
       { capabilities: {} },
     );
     const transport = new StreamableHTTPClientTransport(resolveMcpServerUrl(), {});

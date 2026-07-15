@@ -10,6 +10,9 @@ export enum NATIVE_MESSAGE_TYPE {
 
 export const NATIVE_SERVER_PORT = 12306;
 
+const packageJson = require('../../package.json') as { version: string };
+export const BRIDGE_VERSION = packageJson.version;
+
 // Timeout constants (in milliseconds)
 export const TIMEOUTS = {
   DEFAULT_REQUEST_TIMEOUT: 15000,

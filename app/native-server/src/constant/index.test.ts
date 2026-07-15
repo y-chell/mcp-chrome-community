@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from '@jest/globals';
 import {
+  BRIDGE_VERSION,
   CHROME_MCP_HOST_ENV,
   CHROME_MCP_PORT_ENV,
   MCP_HTTP_HOST_ENV,
@@ -16,6 +17,10 @@ afterEach(() => {
 });
 
 describe('mcp-chrome-community endpoint config', () => {
+  test('reports the native package version', () => {
+    expect(BRIDGE_VERSION).toBe(require('../../package.json').version);
+  });
+
   test('prefers CHROME_MCP_HOST and CHROME_MCP_PORT when building url', () => {
     process.env[CHROME_MCP_HOST_ENV] = '192.168.1.20';
     process.env[CHROME_MCP_PORT_ENV] = '4567';

@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { getChromeMcpUrl } from '../constant';
+import { BRIDGE_VERSION, getChromeMcpUrl } from '../constant';
 
 export interface CliToolInvocation {
   /**
@@ -45,7 +45,7 @@ export class AgentToolBridge {
     this.client = new Client(
       {
         name: 'mcp-chrome-community-agent-bridge',
-        version: '1.0.9',
+        version: BRIDGE_VERSION,
       },
       {},
     );
