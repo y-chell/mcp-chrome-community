@@ -7,13 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.11] - 2026-07-17
+
 ### Added
 
+- **Modern MCP request lifecycle**: MCP cancellation and progress now propagate through HTTP, stdio, Native Messaging, extension isolation queues, and cooperative wait tools
+- **Structured MCP results and annotations**: static tools now expose stricter schemas, behavioral annotations, and compatible `structuredContent` for JSON object results
+- **Dynamic catalog notifications**: workflow tool discovery now uses non-blocking per-server caching and sends `notifications/tools/list_changed` after real catalog changes
+- **Cancellable browser waits**: download and network waits clean up listeners, timers, and temporary captures when cancelled, while reporting monotonic best-effort progress
 - **STDIO tool profiles**: added backward-compatible `full`, compact `core`, and search-first `search` catalogs through `CHROME_MCP_TOOL_PROFILE`
 - **On-demand tool catalog**: added `chrome_search_tools`, `chrome_describe_tool`, and `chrome_call_tool` so compact profiles can discover and invoke hidden browser tools without restarting the server
 - **Profile smoke coverage**: `pnpm smoke:stdio -- --profile <full|core|search>` now validates each advertised catalog and the search/describe meta tools
 - **Real-browser release acceptance coverage**: `pnpm smoke:stdio -- --real-browser --verbose` now exercises hover, drag/drop, and tab grouping in the local fixture flow, and reports the covered interaction metadata in its JSON output
 - **Release smoke gate**: the release workflow now runs `pnpm smoke:stdio` after building the native server, so published releases fail early if stdio tool discovery breaks
+
+### Changed
+
+- **MCP dependency baseline**: all MCP workspaces now use `@modelcontextprotocol/sdk ^1.29.0` and compatible Zod versions
+- **Tool search quality**: Unicode normalization, Unicode tokenization, and Chinese aliases improve natural-language tool discovery
 
 ## [v1.0.10] - 2026-06-03
 

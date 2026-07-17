@@ -64,6 +64,42 @@ describe('tool catalog search', () => {
     });
     expect(results[0]?.parameterNames.length).toBeGreaterThan(0);
   });
+
+  test('keeps English capability search behavior', () => {
+    expect(searchBrowserTools('network request', 5, 'core')[0]?.name).toBe(
+      TOOL_NAMES.BROWSER.NETWORK_REQUEST,
+    );
+    expect(searchBrowserTools('screenshot', 5, 'core')[0]?.name).toBe(
+      TOOL_NAMES.BROWSER.SCREENSHOT,
+    );
+  });
+
+  test.each([
+    ['抓包', TOOL_NAMES.BROWSER.NETWORK_CAPTURE],
+    ['网络请求', TOOL_NAMES.BROWSER.NETWORK_REQUEST],
+    ['标签页', TOOL_NAMES.BROWSER.GET_WINDOWS_AND_TABS],
+    ['截图', TOOL_NAMES.BROWSER.SCREENSHOT],
+    ['下载', TOOL_NAMES.BROWSER.HANDLE_DOWNLOAD],
+    ['控制台', TOOL_NAMES.BROWSER.CONSOLE],
+    ['表单', TOOL_NAMES.BROWSER.FILL],
+  ])('finds the expected tool for compact Chinese query %s', (query, expectedName) => {
+    expect(searchBrowserTools(query, 5, 'core')[0]?.name).toBe(expectedName);
+  });
+
+  test.each([
+    ['网络 请求', TOOL_NAMES.BROWSER.NETWORK_REQUEST],
+    ['填写 表单', TOOL_NAMES.BROWSER.FILL],
+    ['浏览器 标签页', TOOL_NAMES.BROWSER.GET_WINDOWS_AND_TABS],
+  ])('finds the expected tool for spaced Chinese query %s', (query, expectedName) => {
+    expect(searchBrowserTools(query, 5, 'search')[0]?.name).toBe(expectedName);
+  });
+
+  test('normalizes full-width Unicode text and preserves the requested result limit', () => {
+    const results = searchBrowserTools('ＨＴＴＰ 请求', 1, 'core');
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.name).toBe(TOOL_NAMES.BROWSER.NETWORK_REQUEST);
+  });
 });
 
 describe('profile meta tools', () => {
@@ -83,6 +119,7 @@ describe('profile meta tools', () => {
       exposed: false,
       tool: { name: TOOL_NAMES.BROWSER.GIF_RECORDER },
     });
+    expect(result?.structuredContent).toEqual(payload);
     expect(invoke).not.toHaveBeenCalled();
   });
 

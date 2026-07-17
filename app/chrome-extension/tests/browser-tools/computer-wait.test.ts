@@ -126,6 +126,88 @@ describe('computer wait enhancements', () => {
     });
   });
 
+  it('cancels download waits and removes all registered resources', async () => {
+    const controller = new AbortController();
+    const pending = waitForDownload({
+      filenameContains: 'report',
+      waitForComplete: true,
+      timeoutMs: 2000,
+      signal: controller.signal,
+    });
+    const createdListener = (chrome.downloads.onCreated.addListener as any).mock.calls[0][0];
+    const changedListener = (chrome.downloads.onChanged.addListener as any).mock.calls[0][0];
+
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(chrome.downloads.onCreated.removeListener).toHaveBeenCalledWith(createdListener);
+    expect(chrome.downloads.onChanged.removeListener).toHaveBeenCalledWith(changedListener);
+  });
+
+  it('reports real download progress monotonically and completes at 100', async () => {
+    let currentItem = {
+      id: 8,
+      filename: 'C:\\Downloads\\report.csv',
+      url: 'https://example.com/report.csv',
+      state: 'in_progress',
+      bytesReceived: 25,
+      totalBytes: 100,
+      startTime: new Date().toISOString(),
+    } as chrome.downloads.DownloadItem;
+    (chrome.downloads.search as any).mockImplementation((query: { id?: number }) =>
+      Promise.resolve(typeof query?.id === 'number' ? [currentItem] : []),
+    );
+    const progress: number[] = [];
+    const pending = waitForDownload({
+      filenameContains: 'report',
+      waitForComplete: true,
+      timeoutMs: 2000,
+      reportProgress: vi.fn(async (update) => progress.push(update.progress)),
+    });
+    const onCreated = (chrome.downloads.onCreated.addListener as any).mock.calls[0][0];
+    const onChanged = (chrome.downloads.onChanged.addListener as any).mock.calls[0][0];
+
+    onCreated(currentItem);
+    await vi.waitFor(() => expect(progress).toContain(25));
+    currentItem = {
+      ...currentItem,
+      state: 'complete',
+      bytesReceived: 100,
+    } as chrome.downloads.DownloadItem;
+    onChanged({ id: currentItem.id, state: { current: 'complete' } });
+
+    const result = await pending;
+    expect(result).toMatchObject({ id: 8, state: 'complete', progressPct: 100 });
+    expect(progress.at(-1)).toBe(100);
+    expect(progress.every((value, index) => index === 0 || value >= progress[index - 1])).toBe(
+      true,
+    );
+  });
+
+  it('keeps download results successful when progress delivery fails', async () => {
+    const item = {
+      id: 9,
+      filename: 'C:\\Downloads\\report.csv',
+      url: 'https://example.com/report.csv',
+      state: 'complete',
+      bytesReceived: 100,
+      totalBytes: 100,
+      startTime: new Date().toISOString(),
+    } as chrome.downloads.DownloadItem;
+    (chrome.downloads.search as any).mockResolvedValue([item]);
+
+    await expect(
+      waitForDownload({
+        filenameContains: 'report',
+        waitForComplete: true,
+        timeoutMs: 2000,
+        reportProgress: vi.fn(async () => {
+          throw new Error('progress channel closed');
+        }),
+      }),
+    ).resolves.toMatchObject({ id: 9, state: 'complete' });
+  });
+
   it('matches completed network requests from active capture data', async () => {
     const startedAfter = Date.now() - 100;
     networkCaptureStartTool.captureData.set(tabId, {
@@ -154,6 +236,35 @@ describe('computer wait enhancements', () => {
       method: 'POST',
       status: 200,
     });
+  });
+
+  it('cancels temporary network waits and stops their capture', async () => {
+    const startSpy = vi
+      .spyOn(networkCaptureStartTool, 'startCaptureForTab')
+      .mockImplementation(async (targetTabId) => {
+        networkCaptureStartTool.captureData.set(targetTabId, { requests: {} } as any);
+      });
+    const stopSpy = vi
+      .spyOn(networkCaptureStartTool, 'stopCapture')
+      .mockImplementation(async (targetTabId) => {
+        networkCaptureStartTool.captureData.delete(targetTabId);
+      });
+    const controller = new AbortController();
+    const pending = waitForCapturedRequest({
+      tabId,
+      timeoutMs: 2000,
+      signal: controller.signal,
+      reportProgress: vi.fn(async () => {
+        throw new Error('progress channel closed');
+      }),
+    });
+
+    await vi.waitFor(() => expect(startSpy).toHaveBeenCalledWith(tabId, expect.any(Object)));
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(stopSpy).toHaveBeenCalledWith(tabId);
+    expect(networkCaptureStartTool.captureData.has(tabId)).toBe(false);
   });
 
   it('finds selector waits in child frames without explicit frameId', async () => {

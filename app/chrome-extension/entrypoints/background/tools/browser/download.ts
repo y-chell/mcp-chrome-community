@@ -1,6 +1,7 @@
 import { createErrorResponse, type ToolResult } from '@/common/tool-handler';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
+import type { BrowserToolExecutionContext } from '../browser-session-context';
 
 type DownloadChromeState = 'in_progress' | 'complete' | 'interrupted';
 type DownloadStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
@@ -25,6 +26,24 @@ interface DownloadQueryOptions {
   state?: DownloadChromeState;
   status?: DownloadStatus;
   limit?: number;
+}
+
+function createAbortError(signal?: AbortSignal): Error {
+  const reason = signal?.reason;
+  const message = reason instanceof Error ? reason.message : 'Operation cancelled';
+  const error = new Error(message);
+  error.name = 'AbortError';
+  return error;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw createAbortError(signal);
+  }
 }
 
 function basename(filePath: string | undefined): string | undefined {
@@ -180,7 +199,11 @@ export async function getLatestDownload(opts: DownloadQueryOptions) {
 class HandleDownloadTool extends BaseBrowserToolExecutor {
   name = TOOL_NAMES.BROWSER.HANDLE_DOWNLOAD as any;
 
-  async execute(args: HandleDownloadParams): Promise<ToolResult> {
+  async execute(
+    args: HandleDownloadParams,
+    executionContext?: BrowserToolExecutionContext,
+  ): Promise<ToolResult> {
+    throwIfAborted(executionContext?.signal);
     const action = args?.action || 'wait';
     const filenameContains = String(args?.filenameContains || '')
       .trim()
@@ -263,6 +286,8 @@ class HandleDownloadTool extends BaseBrowserToolExecutor {
         allowInterrupted,
         state,
         status,
+        signal: executionContext?.signal,
+        reportProgress: executionContext?.reportProgress,
       });
       return {
         content: [
@@ -271,6 +296,7 @@ class HandleDownloadTool extends BaseBrowserToolExecutor {
         isError: false,
       };
     } catch (e: any) {
+      if (isAbortError(e)) throw e;
       return createErrorResponse(`Handle download failed: ${e?.message || String(e)}`);
     }
   }
@@ -285,6 +311,8 @@ export async function waitForDownload(opts: {
   allowInterrupted?: boolean;
   state?: DownloadChromeState;
   status?: DownloadStatus;
+  signal?: AbortSignal;
+  reportProgress?: BrowserToolExecutionContext['reportProgress'];
 }) {
   const {
     id,
@@ -295,11 +323,29 @@ export async function waitForDownload(opts: {
     allowInterrupted,
     state,
     status,
+    signal,
+    reportProgress,
   } = opts;
+
+  throwIfAborted(signal);
 
   return new Promise<any>((resolve, reject) => {
     let timer: any = null;
     let settled = false;
+    let lastProgress = -1;
+    let progressQueue = Promise.resolve();
+
+    const emitProgress = (progress: number, message: string): Promise<void> => {
+      const normalized = Math.max(0, Math.min(100, Math.round(progress)));
+      if (!reportProgress || normalized < lastProgress) return progressQueue;
+      if (normalized === lastProgress) return progressQueue;
+
+      lastProgress = normalized;
+      progressQueue = progressQueue
+        .then(() => reportProgress({ progress: normalized, total: 100, message }))
+        .catch(() => undefined);
+      return progressQueue;
+    };
 
     const cleanup = () => {
       try {
@@ -311,16 +357,20 @@ export async function waitForDownload(opts: {
       try {
         chrome.downloads.onChanged.removeListener(onChanged);
       } catch {}
+      signal?.removeEventListener('abort', onAbort);
     };
 
     const finishResolve = (item: chrome.downloads.DownloadItem) => {
       if (settled) return;
       settled = true;
       cleanup();
-      resolve({
-        ...serializeDownloadItem(item),
-        matchedBy: getMatchedBy(item, filenameContains),
-      });
+      const serialized = serializeDownloadItem(item);
+      void emitProgress(100, `Download ${serialized.filename || item.id} ready`).then(() =>
+        resolve({
+          ...serialized,
+          matchedBy: getMatchedBy(item, filenameContains),
+        }),
+      );
     };
 
     const finishReject = (err: unknown) => {
@@ -329,6 +379,8 @@ export async function waitForDownload(opts: {
       cleanup();
       reject(err instanceof Error ? err : new Error(String(err)));
     };
+
+    const onAbort = () => finishReject(createAbortError(signal));
 
     const matches = (item: chrome.downloads.DownloadItem) =>
       matchesDownload(item, {
@@ -347,10 +399,42 @@ export async function waitForDownload(opts: {
       return allowInterrupted === true && item.state === 'interrupted';
     };
 
+    const reportItemProgress = async (item: chrome.downloads.DownloadItem) => {
+      const serialized = serializeDownloadItem(item);
+      const label = serialized.filename || `download ${item.id}`;
+
+      if (item.state === 'complete') {
+        await emitProgress(100, `Download ${label} completed`);
+        return;
+      }
+
+      if (item.state === 'interrupted') {
+        await emitProgress(Math.max(lastProgress, 5), `Download ${label} interrupted`);
+        return;
+      }
+
+      if (
+        typeof serialized.totalBytes === 'number' &&
+        serialized.totalBytes > 0 &&
+        typeof serialized.receivedBytes === 'number'
+      ) {
+        await emitProgress(
+          Math.min(99, serialized.progressPct),
+          `Downloading ${label}: ${serialized.receivedBytes}/${serialized.totalBytes} bytes`,
+        );
+        return;
+      }
+
+      await emitProgress(Math.max(lastProgress, 5), `Download ${label} started`);
+    };
+
     const inspectAndMaybeFinish = async (itemId: number) => {
       const [item] = await chrome.downloads.search({ id: itemId });
+      if (settled) return;
       if (!item) return;
       if (!matches(item)) return;
+
+      await reportItemProgress(item);
 
       if (!matchesWaitCondition(item)) return;
 
@@ -371,9 +455,7 @@ export async function waitForDownload(opts: {
     const onCreated = (item: chrome.downloads.DownloadItem) => {
       try {
         if (!matches(item)) return;
-        if (matchesWaitCondition(item)) {
-          void inspectAndMaybeFinish(item.id);
-        }
+        void inspectAndMaybeFinish(item.id).catch(finishReject);
       } catch (error) {
         finishReject(error);
       }
@@ -382,35 +464,50 @@ export async function waitForDownload(opts: {
     const onChanged = (delta: chrome.downloads.DownloadDelta) => {
       try {
         if (!delta || typeof delta.id !== 'number') return;
-        void inspectAndMaybeFinish(delta.id).catch(() => {});
-      } catch {}
+        void inspectAndMaybeFinish(delta.id).catch(finishReject);
+      } catch (error) {
+        finishReject(error);
+      }
     };
 
     chrome.downloads.onCreated.addListener(onCreated);
     chrome.downloads.onChanged.addListener(onChanged);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
     timer = setTimeout(() => finishReject(new Error('Download wait timed out')), timeoutMs);
+
+    void emitProgress(0, 'Waiting for download').catch(finishReject);
 
     chrome.downloads
       .search(typeof id === 'number' ? { id } : {})
-      .then((items) => {
+      .then(async (items) => {
+        if (settled) return;
         const matched = (items || [])
-          .filter((item) => matches(item) && matchesWaitCondition(item))
+          .filter((item) => matches(item))
           .sort((a, b) => toTimestamp(b.startTime) - toTimestamp(a.startTime));
         if (matched[0]) {
+          await reportItemProgress(matched[0]);
+        }
+
+        const finishable = matched.find((item) => matchesWaitCondition(item));
+        if (finishable) {
           if (
             !state &&
             !status &&
             waitForComplete &&
-            matched[0].state === 'interrupted' &&
+            finishable.state === 'interrupted' &&
             allowInterrupted !== true
           ) {
-            finishReject(new Error((matched[0] as any).error || 'Download was interrupted'));
+            finishReject(new Error((finishable as any).error || 'Download was interrupted'));
             return;
           }
-          finishResolve(matched[0]);
+          finishResolve(finishable);
         }
       })
-      .catch(() => {});
+      .catch(finishReject);
   });
 }
 

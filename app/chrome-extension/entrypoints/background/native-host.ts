@@ -1,4 +1,4 @@
-import { NativeMessageType } from 'chrome-mcp-shared';
+import { NativeMessageType, type NativeToolProgress } from 'chrome-mcp-shared';
 import { BACKGROUND_MESSAGE_TYPES } from '@/common/message-types';
 import { NATIVE_HOST, STORAGE_KEYS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '@/common/constants';
 import { handleCallTool } from './tools';
@@ -8,7 +8,21 @@ import { acquireKeepalive } from './keepalive-manager';
 const LOG_PREFIX = '[NativeHost]';
 
 let nativePort: chrome.runtime.Port | null = null;
+const activeToolRequests = new Map<string, AbortController>();
 export const HOST_NAME = NATIVE_HOST.NAME;
+
+function abortToolRequest(controller: AbortController, message: string): void {
+  const error = new Error(message);
+  error.name = 'AbortError';
+  controller.abort(error);
+}
+
+function cancelActiveToolRequests(reason: string): void {
+  for (const controller of activeToolRequests.values()) {
+    abortToolRequest(controller, reason);
+  }
+  activeToolRequests.clear();
+}
 
 // ==================== Reconnect Configuration ====================
 
@@ -358,6 +372,11 @@ export function connectNativeHost(port: number = NATIVE_HOST.DEFAULT_PORT): bool
         });
       } else if (message.type === NativeMessageType.CALL_TOOL && message.requestId) {
         const requestId = message.requestId;
+        const requestPort = nativePort;
+        const previousController = activeToolRequests.get(requestId);
+        if (previousController) abortToolRequest(previousController, 'Tool call superseded');
+        const controller = new AbortController();
+        activeToolRequests.set(requestId, controller);
         try {
           const payload = message.payload || {};
           const result = await handleCallTool({
@@ -367,8 +386,24 @@ export function connectNativeHost(port: number = NATIVE_HOST.DEFAULT_PORT): bool
               ...(payload.context || {}),
               nativeRequestId: requestId,
             },
+            executionContext: {
+              signal: controller.signal,
+              reportProgress: (progress: NativeToolProgress) => {
+                if (controller.signal.aborted || nativePort !== requestPort) return;
+                try {
+                  requestPort?.postMessage({
+                    type: NativeMessageType.CALL_TOOL_PROGRESS,
+                    requestId,
+                    payload: progress,
+                  });
+                } catch {
+                  // Progress is advisory; the final request lifecycle remains authoritative.
+                }
+              },
+            },
           });
-          nativePort?.postMessage({
+          if (controller.signal.aborted || nativePort !== requestPort) return;
+          requestPort?.postMessage({
             responseToRequestId: requestId,
             payload: {
               status: 'success',
@@ -377,7 +412,8 @@ export function connectNativeHost(port: number = NATIVE_HOST.DEFAULT_PORT): bool
             },
           });
         } catch (error) {
-          nativePort?.postMessage({
+          if (controller.signal.aborted || nativePort !== requestPort) return;
+          requestPort?.postMessage({
             responseToRequestId: requestId,
             payload: {
               status: 'error',
@@ -385,6 +421,17 @@ export function connectNativeHost(port: number = NATIVE_HOST.DEFAULT_PORT): bool
               error: error instanceof Error ? error.message : String(error),
             },
           });
+        } finally {
+          if (activeToolRequests.get(requestId) === controller) {
+            activeToolRequests.delete(requestId);
+          }
+        }
+      } else if (message.type === NativeMessageType.CALL_TOOL_CANCEL) {
+        const requestId = message.requestId || message.payload?.requestId;
+        if (typeof requestId === 'string') {
+          const controller = activeToolRequests.get(requestId);
+          if (controller) abortToolRequest(controller, 'Tool call cancelled');
+          activeToolRequests.delete(requestId);
         }
       } else if (message.type === 'rr_list_published_flows' && message.requestId) {
         const requestId = message.requestId;
@@ -447,6 +494,7 @@ export function connectNativeHost(port: number = NATIVE_HOST.DEFAULT_PORT): bool
 
     nativePort.onDisconnect.addListener(() => {
       console.warn(ERROR_MESSAGES.NATIVE_DISCONNECTED, chrome.runtime.lastError);
+      cancelActiveToolRequests('Native host disconnected');
       nativePort = null;
 
       // Mark server as stopped since native host disconnection means server is down
@@ -572,6 +620,7 @@ export const initNativeHostListener = () => {
           // Only set manualDisconnect if we actually have a port to disconnect.
           // This prevents the flag from persisting when there's no active connection.
           manualDisconnect = true;
+          cancelActiveToolRequests('Native host disconnected');
           try {
             nativePort.disconnect();
           } catch {

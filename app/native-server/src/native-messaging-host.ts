@@ -1,7 +1,7 @@
 import { stdin, stdout } from 'process';
 import { Server } from './server';
 import { v4 as uuidv4 } from 'uuid';
-import { NativeMessageType } from 'chrome-mcp-shared';
+import { NativeMessageType, type NativeToolProgress } from 'chrome-mcp-shared';
 import { TIMEOUTS } from './constant';
 import fileHandler from './file-handler';
 
@@ -9,6 +9,22 @@ interface PendingRequest {
   resolve: (value: any) => void;
   reject: (reason?: any) => void;
   timeoutId: NodeJS.Timeout;
+  signal?: AbortSignal;
+  abortListener?: () => void;
+  onProgress?: (progress: NativeToolProgress) => void | Promise<void>;
+}
+
+export type { NativeToolProgress } from 'chrome-mcp-shared';
+
+export interface ExtensionRequestOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: NativeToolProgress) => void | Promise<void>;
+}
+
+function createAbortError(message = 'Request cancelled'): Error {
+  const error = new Error(message);
+  error.name = 'AbortError';
+  return error;
 }
 
 export class NativeMessagingHost {
@@ -98,18 +114,28 @@ export class NativeMessagingHost {
       return;
     }
 
+    if (message.type === NativeMessageType.CALL_TOOL_PROGRESS && message.requestId) {
+      const pending = this.pendingRequests.get(message.requestId);
+      if (pending?.onProgress) {
+        try {
+          void Promise.resolve(pending.onProgress(message.payload)).catch(() => undefined);
+        } catch {
+          // Progress is advisory and must not fail the underlying tool request.
+        }
+      }
+      return;
+    }
+
     if (message.responseToRequestId) {
       const requestId = message.responseToRequestId;
-      const pending = this.pendingRequests.get(requestId);
+      const pending = this.takePendingRequest(requestId);
 
       if (pending) {
-        clearTimeout(pending.timeoutId);
         if (message.error) {
           pending.reject(new Error(message.error));
         } else {
           pending.resolve(message.payload);
         }
-        this.pendingRequests.delete(requestId);
       } else {
         // just ignore
       }
@@ -194,17 +220,45 @@ export class NativeMessagingHost {
     messagePayload: any,
     messageType: string = 'request_data',
     timeoutMs: number = TIMEOUTS.DEFAULT_REQUEST_TIMEOUT,
+    options: ExtensionRequestOptions = {},
   ): Promise<any> {
+    if (options.signal?.aborted) {
+      return Promise.reject(createAbortError());
+    }
+
     return new Promise((resolve, reject) => {
       const requestId = uuidv4(); // Generate unique request ID
 
       const timeoutId = setTimeout(() => {
-        this.pendingRequests.delete(requestId); // Remove from Map after timeout
-        reject(new Error(`Request timed out after ${timeoutMs}ms`));
+        const pending = this.takePendingRequest(requestId);
+        if (!pending) return;
+
+        this.sendToolCancellation(requestId);
+        pending.reject(new Error(`Request timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
+      const abortListener = options.signal
+        ? () => {
+            const pending = this.takePendingRequest(requestId);
+            if (!pending) return;
+
+            this.sendToolCancellation(requestId);
+            pending.reject(createAbortError());
+          }
+        : undefined;
+
       // Store request's resolve/reject functions and timeout ID
-      this.pendingRequests.set(requestId, { resolve, reject, timeoutId });
+      this.pendingRequests.set(requestId, {
+        resolve,
+        reject,
+        timeoutId,
+        signal: options.signal,
+        abortListener,
+        onProgress: options.onProgress,
+      });
+      if (abortListener) {
+        options.signal!.addEventListener('abort', abortListener, { once: true });
+      }
 
       // Send message with requestId to Chrome
       this.sendMessage({
@@ -212,6 +266,26 @@ export class NativeMessagingHost {
         payload: messagePayload,
         requestId: requestId, // <--- Key: include request ID
       });
+    });
+  }
+
+  private takePendingRequest(requestId: string): PendingRequest | undefined {
+    const pending = this.pendingRequests.get(requestId);
+    if (!pending) return undefined;
+
+    this.pendingRequests.delete(requestId);
+    clearTimeout(pending.timeoutId);
+    if (pending.signal && pending.abortListener) {
+      pending.signal.removeEventListener('abort', pending.abortListener);
+    }
+    return pending;
+  }
+
+  private sendToolCancellation(requestId: string): void {
+    this.sendMessage({
+      type: NativeMessageType.CALL_TOOL_CANCEL,
+      requestId,
+      payload: { requestId },
     });
   }
 
@@ -309,11 +383,11 @@ export class NativeMessagingHost {
    */
   private cleanup(): void {
     // Reject all pending requests
-    this.pendingRequests.forEach((pending) => {
-      clearTimeout(pending.timeoutId);
-      pending.reject(new Error('Native host is shutting down or Chrome disconnected.'));
-    });
-    this.pendingRequests.clear();
+    for (const requestId of [...this.pendingRequests.keys()]) {
+      this.takePendingRequest(requestId)?.reject(
+        new Error('Native host is shutting down or Chrome disconnected.'),
+      );
+    }
 
     if (this.associatedServer && this.associatedServer.isRunning) {
       this.associatedServer

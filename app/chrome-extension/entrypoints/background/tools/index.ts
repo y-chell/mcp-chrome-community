@@ -6,11 +6,12 @@ import { flowRunTool, listPublishedFlowsTool } from './record-replay';
 import {
   runBrowserToolCallWithIsolation,
   type BrowserToolCallContext,
+  type BrowserToolExecutionContext,
 } from './browser-session-context';
 
 type ToolExecutor = {
   name: string;
-  execute: (args: any) => Promise<any>;
+  execute: (args: any, context?: BrowserToolExecutionContext) => Promise<any>;
 };
 
 function isToolExecutor(value: unknown): value is ToolExecutor {
@@ -53,6 +54,7 @@ export interface ToolCallParam {
   name: string;
   args: any;
   context?: BrowserToolCallContext;
+  executionContext?: BrowserToolExecutionContext;
 }
 
 /**
@@ -65,8 +67,12 @@ export const handleCallTool = async (param: ToolCallParam) => {
   }
 
   try {
-    return await runBrowserToolCallWithIsolation(param.name, param.args, param.context, (args) =>
-      tool.execute(args),
+    return await runBrowserToolCallWithIsolation(
+      param.name,
+      param.args,
+      param.context,
+      (args, executionContext) => tool.execute(args, executionContext),
+      param.executionContext,
     );
   } catch (error) {
     console.error(`Tool execution failed for ${param.name}:`, error);

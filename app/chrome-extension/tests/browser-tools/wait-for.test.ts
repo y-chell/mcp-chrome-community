@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { assertTool, waitForTool } from '@/entrypoints/background/tools/browser/wait-for';
 import { computerTool } from '@/entrypoints/background/tools/browser/computer';
@@ -31,6 +31,10 @@ describe('wait_for and assert tools', () => {
         active: true,
       },
     ]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('delegates element visibility waits to chrome_computer', async () => {
@@ -158,5 +162,65 @@ describe('wait_for and assert tools', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content?.[0]?.text).toContain('does not support');
+  });
+
+  it('cancels sleep waits with AbortError and clears the active timer', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const pending = waitForTool.execute(
+      {
+        tabId: 21,
+        condition: { kind: 'sleep', durationMs: 5000 },
+      } as any,
+      { signal: controller.signal } as any,
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('reports monotonic sleep progress and finishes at 100', async () => {
+    vi.useFakeTimers();
+    const progress: number[] = [];
+    const pending = waitForTool.execute(
+      {
+        tabId: 21,
+        condition: { kind: 'sleep', durationMs: 1000 },
+      } as any,
+      {
+        reportProgress: vi.fn(async (update) => progress.push(update.progress)),
+      } as any,
+    );
+
+    await vi.runAllTimersAsync();
+    const result = await pending;
+
+    expect(result.isError).toBe(false);
+    expect(progress.at(-1)).toBe(100);
+    expect(progress.every((value, index) => index === 0 || value >= progress[index - 1])).toBe(
+      true,
+    );
+    expect(progress.length).toBeLessThanOrEqual(6);
+  });
+
+  it('does not fail when progress delivery is unavailable', async () => {
+    vi.useFakeTimers();
+    const pending = waitForTool.execute(
+      {
+        tabId: 21,
+        condition: { kind: 'sleep', durationMs: 500 },
+      } as any,
+      {
+        reportProgress: vi.fn(async () => {
+          throw new Error('progress channel closed');
+        }),
+      } as any,
+    );
+
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toMatchObject({ isError: false });
   });
 });

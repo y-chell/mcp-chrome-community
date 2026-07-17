@@ -146,4 +146,55 @@ describe('browser tool session context', () => {
 
     expect(events).toEqual(['first-start', 'first-end', 'second-start']);
   });
+
+  it('rejects a cancelled queued call without breaking session ordering', async () => {
+    const events: string[] = [];
+    let releaseFirst!: () => void;
+    const controller = new AbortController();
+
+    const first = runBrowserToolCallWithIsolation(
+      'chrome_navigate',
+      {},
+      { sessionId: 'same-session' },
+      async () => {
+        events.push('first-start');
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+        events.push('first-end');
+        return textResult({ success: true });
+      },
+    );
+
+    const cancelled = runBrowserToolCallWithIsolation(
+      'chrome_navigate',
+      {},
+      { sessionId: 'same-session' },
+      async () => {
+        events.push('cancelled-start');
+        return textResult({ success: true });
+      },
+      { signal: controller.signal },
+    );
+
+    const third = runBrowserToolCallWithIsolation(
+      'chrome_navigate',
+      {},
+      { sessionId: 'same-session' },
+      async () => {
+        events.push('third-start');
+        return textResult({ success: true });
+      },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort(new Error('cancel queued request'));
+    await expect(cancelled).rejects.toThrow('cancel queued request');
+    expect(events).toEqual(['first-start']);
+
+    releaseFirst();
+    await Promise.all([first, third]);
+
+    expect(events).toEqual(['first-start', 'first-end', 'third-start']);
+  });
 });

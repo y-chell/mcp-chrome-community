@@ -16,6 +16,7 @@ import {
   type ActionMetadata,
   type ActionType,
 } from './gif-recorder';
+import type { BrowserToolExecutionContext } from '../browser-session-context';
 
 type MouseButton = 'left' | 'right' | 'middle';
 
@@ -241,7 +242,10 @@ class CDPHelper {
 class ComputerTool extends BaseBrowserToolExecutor {
   name = TOOL_NAMES.BROWSER.COMPUTER;
 
-  async execute(args: ComputerParams): Promise<ToolResult> {
+  async execute(
+    args: ComputerParams,
+    executionContext?: BrowserToolExecutionContext,
+  ): Promise<ToolResult> {
     const params = args || ({} as ComputerParams);
     if (!params.action) return createErrorResponse('Action parameter is required');
 
@@ -252,7 +256,7 @@ class ComputerTool extends BaseBrowserToolExecutor {
         return createErrorResponse(ERROR_MESSAGES.TAB_NOT_FOUND + ': Active tab has no ID');
 
       // Execute the action and capture frame on success
-      const result = await this.executeAction(params, tab);
+      const result = await this.executeAction(params, tab, executionContext);
 
       // Trigger auto-capture on successful actions (except screenshot which is read-only)
       if (!result.isError && params.action !== 'screenshot' && params.action !== 'wait') {
@@ -480,7 +484,11 @@ class ComputerTool extends BaseBrowserToolExecutor {
     };
   }
 
-  private async handleWait(params: ComputerParams, tab: chrome.tabs.Tab): Promise<ToolResult> {
+  private async handleWait(
+    params: ComputerParams,
+    tab: chrome.tabs.Tab,
+    executionContext?: BrowserToolExecutionContext,
+  ): Promise<ToolResult> {
     const waitStartedAt = Date.now();
     const timeoutMs = Math.max(0, Math.min(Number(params.timeout ?? 10000), 120000));
     const frameId = this.resolveFrameIdForRef(tab.id!, params.ref, params.frameId);
@@ -614,6 +622,8 @@ class ComputerTool extends BaseBrowserToolExecutor {
           waitForComplete: params.waitForComplete !== false,
           timeoutMs,
           startedAfter: waitStartedAt,
+          signal: executionContext?.signal,
+          reportProgress: executionContext?.reportProgress,
         });
         return this.createJsonSuccess({
           success: true,
@@ -639,6 +649,8 @@ class ComputerTool extends BaseBrowserToolExecutor {
           timeoutMs,
           startedAfter: waitStartedAt,
           includeStatic: params.includeStatic === true,
+          signal: executionContext?.signal,
+          reportProgress: executionContext?.reportProgress,
         });
         return this.createJsonSuccess({
           success: true,
@@ -670,7 +682,11 @@ class ComputerTool extends BaseBrowserToolExecutor {
     });
   }
 
-  private async executeAction(params: ComputerParams, tab: chrome.tabs.Tab): Promise<ToolResult> {
+  private async executeAction(
+    params: ComputerParams,
+    tab: chrome.tabs.Tab,
+    executionContext?: BrowserToolExecutionContext,
+  ): Promise<ToolResult> {
     if (!tab.id) {
       return createErrorResponse(ERROR_MESSAGES.TAB_NOT_FOUND + ': Active tab has no ID');
     }
@@ -1492,7 +1508,8 @@ class ComputerTool extends BaseBrowserToolExecutor {
               value: item.value as any,
             } as any);
             const ok = !r.isError;
-            const errorText = r.content?.[0]?.text || 'failed';
+            const firstContent = r.content?.[0];
+            const errorText = firstContent?.type === 'text' ? firstContent.text : 'failed';
             results.push({
               ref: item.ref,
               selector: item.selector,
@@ -1577,7 +1594,7 @@ class ComputerTool extends BaseBrowserToolExecutor {
         }
       }
       case 'wait': {
-        return this.handleWait(params, tab);
+        return this.handleWait(params, tab, executionContext);
       }
       case 'scroll_to': {
         if (!params.ref) {

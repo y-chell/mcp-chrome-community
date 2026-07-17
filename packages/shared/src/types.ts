@@ -10,6 +10,8 @@ export enum NativeMessageType {
   PROCESS_DATA_RESPONSE = 'process_data_response',
   CALL_TOOL = 'call_tool',
   CALL_TOOL_RESPONSE = 'call_tool_response',
+  CALL_TOOL_CANCEL = 'call_tool_cancel',
+  CALL_TOOL_PROGRESS = 'call_tool_progress',
   // Additional message types used in Chrome extension
   SERVER_STARTED = 'server_started',
   SERVER_STOPPED = 'server_stopped',
@@ -22,9 +24,16 @@ export enum NativeMessageType {
 
 export interface NativeMessage<P = any, E = any> {
   type?: NativeMessageType;
+  requestId?: string;
   responseToRequestId?: string;
   payload?: P;
   error?: E;
+}
+
+export interface NativeToolProgress {
+  progress: number;
+  total?: number;
+  message?: string;
 }
 
 // ============================================================

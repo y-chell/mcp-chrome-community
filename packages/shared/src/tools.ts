@@ -1,4 +1,4 @@
-import { type Tool } from '@modelcontextprotocol/sdk/types.js';
+import { type Tool, type ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 
 export const TOOL_NAMES = {
   BROWSER: {
@@ -60,7 +60,7 @@ export const TOOL_NAMES = {
   },
 };
 
-export const TOOL_SCHEMAS: Tool[] = [
+const RAW_TOOL_SCHEMAS: Tool[] = [
   {
     name: TOOL_NAMES.BROWSER.HEALTH,
     description:
@@ -2297,3 +2297,97 @@ export const TOOL_SCHEMAS: Tool[] = [
     },
   },
 ];
+
+type JsonSchemaObject = Record<string, unknown>;
+
+const READ_ONLY_TOOLS = new Set<string>([
+  TOOL_NAMES.BROWSER.HEALTH,
+  TOOL_NAMES.BROWSER.GET_WINDOWS_AND_TABS,
+  TOOL_NAMES.BROWSER.LIST_FRAMES,
+  TOOL_NAMES.BROWSER.PERFORMANCE_ANALYZE_INSIGHT,
+  TOOL_NAMES.BROWSER.SCAN_COMPACT,
+  TOOL_NAMES.BROWSER.READ_PAGE,
+  TOOL_NAMES.BROWSER.QUERY_ELEMENTS,
+  TOOL_NAMES.BROWSER.GET_ELEMENT_HTML,
+  TOOL_NAMES.BROWSER.WAIT_FOR_TAB,
+  TOOL_NAMES.BROWSER.WAIT_FOR,
+  TOOL_NAMES.BROWSER.ASSERT,
+  TOOL_NAMES.BROWSER.WEB_FETCHER,
+  TOOL_NAMES.BROWSER.HANDLE_DOWNLOAD,
+  TOOL_NAMES.BROWSER.HISTORY,
+  TOOL_NAMES.BROWSER.BOOKMARK_SEARCH,
+  TOOL_NAMES.BROWSER.GET_UPLOAD_STATUS,
+]);
+
+const NON_DESTRUCTIVE_MUTATING_TOOLS = new Set<string>([
+  TOOL_NAMES.BROWSER.SCREENSHOT,
+  TOOL_NAMES.BROWSER.SWITCH_TAB,
+  TOOL_NAMES.BROWSER.BOOKMARK_ADD,
+  TOOL_NAMES.BROWSER.REQUEST_ELEMENT_SELECTION,
+]);
+
+const IDEMPOTENT_MUTATING_TOOLS = new Set<string>([
+  TOOL_NAMES.BROWSER.CLOSE_TABS,
+  TOOL_NAMES.BROWSER.SWITCH_TAB,
+  TOOL_NAMES.BROWSER.BOOKMARK_DELETE,
+]);
+
+const CLOSED_WORLD_TOOLS = new Set<string>([
+  TOOL_NAMES.BROWSER.HEALTH,
+  TOOL_NAMES.BROWSER.GET_WINDOWS_AND_TABS,
+  TOOL_NAMES.BROWSER.LIST_FRAMES,
+  TOOL_NAMES.BROWSER.PERFORMANCE_ANALYZE_INSIGHT,
+  TOOL_NAMES.BROWSER.WAIT_FOR_TAB,
+  TOOL_NAMES.BROWSER.CLOSE_TABS,
+  TOOL_NAMES.BROWSER.SWITCH_TAB,
+  TOOL_NAMES.BROWSER.TAB_GROUP,
+  TOOL_NAMES.BROWSER.HANDLE_DOWNLOAD,
+  TOOL_NAMES.BROWSER.HISTORY,
+  TOOL_NAMES.BROWSER.BOOKMARK_SEARCH,
+  TOOL_NAMES.BROWSER.BOOKMARK_ADD,
+  TOOL_NAMES.BROWSER.BOOKMARK_DELETE,
+  TOOL_NAMES.BROWSER.GET_UPLOAD_STATUS,
+]);
+
+function closeDeclaredObjectSchemas(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(closeDeclaredObjectSchemas);
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  const schema = Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [key, closeDeclaredObjectSchemas(child)]),
+  ) as JsonSchemaObject;
+
+  // Objects with declared properties are records with a fixed shape. Objects without
+  // properties (for example HTTP headers and CDP params) intentionally remain free maps.
+  if (
+    schema.type === 'object' &&
+    Object.prototype.hasOwnProperty.call(schema, 'properties') &&
+    !Object.prototype.hasOwnProperty.call(schema, 'additionalProperties')
+  ) {
+    schema.additionalProperties = false;
+  }
+
+  return schema;
+}
+
+function getToolAnnotations(name: string): ToolAnnotations {
+  const readOnly = READ_ONLY_TOOLS.has(name);
+
+  return {
+    readOnlyHint: readOnly,
+    destructiveHint: readOnly ? false : !NON_DESTRUCTIVE_MUTATING_TOOLS.has(name),
+    idempotentHint: readOnly || IDEMPOTENT_MUTATING_TOOLS.has(name),
+    openWorldHint: !CLOSED_WORLD_TOOLS.has(name),
+  };
+}
+
+export const TOOL_SCHEMAS: Tool[] = RAW_TOOL_SCHEMAS.map((tool) => ({
+  ...tool,
+  inputSchema: closeDeclaredObjectSchemas(tool.inputSchema) as Tool['inputSchema'],
+  annotations: getToolAnnotations(tool.name),
+}));

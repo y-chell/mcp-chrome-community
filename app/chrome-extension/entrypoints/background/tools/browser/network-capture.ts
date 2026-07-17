@@ -3,6 +3,7 @@ import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 import { networkCaptureStartTool, networkCaptureStopTool } from './network-capture-web-request';
 import { networkDebuggerStartTool, networkDebuggerStopTool } from './network-capture-debugger';
+import type { BrowserToolExecutionContext } from '../browser-session-context';
 
 type NetworkCaptureBackend = 'webRequest' | 'debugger';
 
@@ -23,6 +24,63 @@ export interface WaitForCapturedRequestOptions {
   timeoutMs: number;
   startedAfter?: number;
   includeStatic?: boolean;
+  signal?: AbortSignal;
+  reportProgress?: BrowserToolExecutionContext['reportProgress'];
+}
+
+const WAIT_PROGRESS_INTERVAL_MS = 250;
+
+function createAbortError(signal?: AbortSignal): Error {
+  const reason = signal?.reason;
+  const message = reason instanceof Error ? reason.message : 'Operation cancelled';
+  const error = new Error(message);
+  error.name = 'AbortError';
+  return error;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw createAbortError(signal);
+}
+
+function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(createAbortError(signal));
+    };
+
+    const timer = setTimeout(
+      () => {
+        cleanup();
+        resolve();
+      },
+      Math.max(0, delayMs),
+    );
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
+}
+
+async function reportWaitProgress(
+  reportProgress: BrowserToolExecutionContext['reportProgress'] | undefined,
+  progress: number,
+  message: string,
+): Promise<void> {
+  try {
+    await reportProgress?.({
+      progress: Math.max(0, Math.min(100, Math.round(progress))),
+      total: 100,
+      message,
+    });
+  } catch {
+    // Progress delivery is best effort.
+  }
 }
 
 /**
@@ -156,18 +214,37 @@ export async function waitForCapturedRequest(opts: WaitForCapturedRequestOptions
   const useActiveDebugger = !!activeDebugger;
   const useActiveWebRequest = !!activeWebRequest;
   let tempCaptureStarted = false;
+  let lastProgress = -1;
+  let lastReportedAt = Number.NEGATIVE_INFINITY;
 
-  if (!useActiveDebugger && !useActiveWebRequest) {
-    await networkCaptureStartTool.startCaptureForTab(opts.tabId, {
-      maxCaptureTime: timeoutMs + 1000,
-      inactivityTimeout: timeoutMs + 1000,
-      includeStatic: opts.includeStatic === true,
-    });
-    tempCaptureStarted = true;
-  }
+  const reportElapsedProgress = async (force = false) => {
+    const now = Date.now();
+    const elapsedMs = now - startTime;
+    const progress = Math.min(99, Math.floor((elapsedMs / timeoutMs) * 100));
+    if (!force && now - lastReportedAt < WAIT_PROGRESS_INTERVAL_MS) return;
+    if (progress <= lastProgress) return;
+
+    await reportWaitProgress(opts.reportProgress, progress, 'Waiting for matching network request');
+    lastProgress = progress;
+    lastReportedAt = now;
+  };
 
   try {
+    throwIfAborted(opts.signal);
+    await reportElapsedProgress(true);
+
+    if (!useActiveDebugger && !useActiveWebRequest) {
+      await networkCaptureStartTool.startCaptureForTab(opts.tabId, {
+        maxCaptureTime: timeoutMs + 1000,
+        inactivityTimeout: timeoutMs + 1000,
+        includeStatic: opts.includeStatic === true,
+      });
+      tempCaptureStarted = true;
+      throwIfAborted(opts.signal);
+    }
+
     while (Date.now() - startTime <= timeoutMs) {
+      throwIfAborted(opts.signal);
       const backend = getDebuggerCaptureInfo(opts.tabId) ? 'debugger' : 'webRequest';
       const captureInfo =
         backend === 'debugger'
@@ -178,6 +255,7 @@ export async function waitForCapturedRequest(opts: WaitForCapturedRequestOptions
         .find((request) => isCompletedRequest(request));
 
       if (matched) {
+        await reportWaitProgress(opts.reportProgress, 100, 'Matched network request');
         return {
           backend,
           request: matched,
@@ -185,7 +263,8 @@ export async function waitForCapturedRequest(opts: WaitForCapturedRequestOptions
         };
       }
 
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      await reportElapsedProgress();
+      await abortableDelay(pollIntervalMs, opts.signal);
     }
 
     throw new Error('Network wait timed out');

@@ -1,10 +1,16 @@
 import type { ToolResult } from '@/common/tool-handler';
+import type { NativeToolProgress } from 'chrome-mcp-shared';
 
 export interface BrowserToolCallContext {
   sessionId?: string;
   requestId?: string;
   transport?: string;
   nativeRequestId?: string;
+}
+
+export interface BrowserToolExecutionContext {
+  signal?: AbortSignal;
+  reportProgress?: (progress: NativeToolProgress) => void | Promise<void>;
 }
 
 interface BrowserSessionBinding {
@@ -362,7 +368,32 @@ async function finalizeToolCall(
   }
 }
 
-async function enqueue<T>(key: string, fn: () => Promise<T>): Promise<T> {
+function abortReason(signal: AbortSignal): Error {
+  const message = signal.reason instanceof Error ? signal.reason.message : 'Tool call cancelled';
+  const error = new Error(message);
+  error.name = 'AbortError';
+  return error;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw abortReason(signal);
+}
+
+async function waitForQueue(previous: Promise<void>, signal?: AbortSignal): Promise<void> {
+  if (!signal) {
+    await previous;
+    return;
+  }
+
+  throwIfAborted(signal);
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => reject(abortReason(signal));
+    signal.addEventListener('abort', onAbort, { once: true });
+    previous.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+async function enqueue<T>(key: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   const previous = isolationQueues.get(key) || Promise.resolve();
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -371,25 +402,36 @@ async function enqueue<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const current = previous.catch(() => undefined).then(() => gate);
   isolationQueues.set(key, current);
 
-  await previous.catch(() => undefined);
-  try {
-    return await fn();
-  } finally {
-    release();
+  void current.finally(() => {
     if (isolationQueues.get(key) === current) {
       isolationQueues.delete(key);
     }
+  });
+
+  try {
+    await waitForQueue(
+      previous.catch(() => undefined),
+      signal,
+    );
+    throwIfAborted(signal);
+    return await fn();
+  } finally {
+    release();
   }
 }
 
-async function withQueues<T>(keys: string[], fn: () => Promise<T>): Promise<T> {
+async function withQueues<T>(
+  keys: string[],
+  fn: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
   const uniqueKeys = Array.from(new Set(keys)).sort();
   if (uniqueKeys.length === 0) return fn();
 
   let run = fn;
   for (const key of uniqueKeys.reverse()) {
     const next = run;
-    run = () => enqueue(key, next);
+    run = () => enqueue(key, next, signal);
   }
   return run();
 }
@@ -418,19 +460,33 @@ export async function runBrowserToolCallWithIsolation(
   toolName: string,
   rawArgs: any,
   context: BrowserToolCallContext | undefined,
-  execute: (preparedArgs: any) => Promise<ToolResult>,
+  execute: (
+    preparedArgs: any,
+    executionContext?: BrowserToolExecutionContext,
+  ) => Promise<ToolResult>,
+  executionContext?: BrowserToolExecutionContext,
 ): Promise<ToolResult> {
+  const signal = executionContext?.signal;
   const sessionId = normalizeSessionId(context);
   const run = async () => {
+    throwIfAborted(signal);
     const prepared = await prepareToolArgs(toolName, rawArgs, context);
-    return withQueues(getTargetQueueKeys(prepared.args), async () => {
-      const result = await execute(prepared.args);
-      await finalizeToolCall(sessionId, toolName, prepared, result);
-      return result;
-    });
+    throwIfAborted(signal);
+    return withQueues(
+      getTargetQueueKeys(prepared.args),
+      async () => {
+        throwIfAborted(signal);
+        const result = await execute(prepared.args, executionContext);
+        throwIfAborted(signal);
+        await finalizeToolCall(sessionId, toolName, prepared, result);
+        throwIfAborted(signal);
+        return result;
+      },
+      signal,
+    );
   };
 
-  return sessionId ? enqueue(`session:${sessionId}`, run) : run();
+  return sessionId ? enqueue(`session:${sessionId}`, run, signal) : run();
 }
 
 export function getBrowserToolSessionBinding(sessionId: string): BrowserSessionBinding | undefined {

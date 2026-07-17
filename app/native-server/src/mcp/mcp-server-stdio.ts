@@ -36,6 +36,11 @@ const toolProfileResolution = resolveToolProfile();
 const toolProfile = toolProfileResolution.profile;
 const exposedToolSchemas = getExposedToolSchemas(toolProfile);
 
+type ProxyCallExecution = {
+  signal?: AbortSignal;
+  onProgress?: (progress: { progress: number; total?: number; message?: string }) => void;
+};
+
 if (toolProfileResolution.invalidValue) {
   console.error(
     `Invalid CHROME_MCP_TOOL_PROFILE="${toolProfileResolution.invalidValue}"; using "full". Expected full, core, or search.`,
@@ -124,9 +129,44 @@ export const setupTools = (server: Server) => {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: exposedToolSchemas }));
 
   // Call tool handler
-  server.setRequestHandler(CallToolRequestSchema, async (request) =>
-    handleToolCall(request.params.name, request.params.arguments || {}),
-  );
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    const progressToken = extra._meta?.progressToken;
+    let lastProgress = 0;
+    let notificationQueue = Promise.resolve();
+    const onProgress =
+      progressToken === undefined
+        ? undefined
+        : (progress: { progress: number; total?: number; message?: string }) => {
+            const total =
+              Number.isFinite(progress.total) && progress.total! > 0 ? progress.total! : 100;
+            const value = Number.isFinite(progress.progress) ? progress.progress : 0;
+            const normalized = Math.max(
+              lastProgress,
+              Math.max(0, Math.min(100, (value / total) * 100)),
+            );
+            lastProgress = normalized;
+            notificationQueue = notificationQueue
+              .then(() =>
+                extra.sendNotification({
+                  method: 'notifications/progress',
+                  params: {
+                    progressToken,
+                    progress: normalized,
+                    total: 100,
+                    ...(progress.message ? { message: progress.message } : {}),
+                  },
+                }),
+              )
+              .catch(() => undefined);
+          };
+
+    const result = await handleToolCall(request.params.name, request.params.arguments || {}, {
+      signal: extra.signal,
+      onProgress,
+    });
+    await notificationQueue;
+    return result;
+  });
 
   // List resources handler - REQUIRED BY MCP PROTOCOL
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [] }));
@@ -135,10 +175,16 @@ export const setupTools = (server: Server) => {
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts: [] }));
 };
 
-const handleToolCall = async (name: string, args: any): Promise<CallToolResult> => {
-  const metaResult = await handleProfileMetaTool(name, args, toolProfile, callBrowserTool);
+const handleToolCall = async (
+  name: string,
+  args: any,
+  execution: ProxyCallExecution = {},
+): Promise<CallToolResult> => {
+  const invokeBrowserTool = (toolName: string, toolArgs: Record<string, unknown>) =>
+    callBrowserTool(toolName, toolArgs, execution);
+  const metaResult = await handleProfileMetaTool(name, args, toolProfile, invokeBrowserTool);
   if (metaResult) return metaResult;
-  return callBrowserTool(name, args);
+  return invokeBrowserTool(name, args);
 };
 
 const appendStdioProfileMetadata = (
@@ -152,19 +198,22 @@ const appendStdioProfileMetadata = (
   try {
     const parsed = JSON.parse(first.text);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return result;
+    const enriched = {
+      ...parsed,
+      stdio: {
+        profile,
+        exposedToolCount: exposedToolSchemas.length,
+        catalogToolCount: TOOL_SCHEMAS.length,
+      },
+    };
+
     return {
       ...result,
+      structuredContent: enriched,
       content: [
         {
           ...first,
-          text: JSON.stringify({
-            ...parsed,
-            stdio: {
-              profile,
-              exposedToolCount: exposedToolSchemas.length,
-              catalogToolCount: TOOL_SCHEMAS.length,
-            },
-          }),
+          text: JSON.stringify(enriched),
         },
         ...(result.content || []).slice(1),
       ],
@@ -177,6 +226,7 @@ const appendStdioProfileMetadata = (
 const callBrowserTool = async (
   name: string,
   args: Record<string, unknown>,
+  execution: ProxyCallExecution = {},
 ): Promise<CallToolResult> => {
   try {
     const client = await ensureMcpClient();
@@ -187,6 +237,10 @@ const callBrowserTool = async (
     const DEFAULT_CALL_TIMEOUT_MS = 2 * 60 * 1000;
     const result = await client.callTool({ name, arguments: args }, undefined, {
       timeout: DEFAULT_CALL_TIMEOUT_MS,
+      signal: execution.signal,
+      onprogress: execution.onProgress,
+      resetTimeoutOnProgress: true,
+      maxTotalTimeout: DEFAULT_CALL_TIMEOUT_MS,
     });
     const callResult = result as CallToolResult;
     return name === 'chrome_health'

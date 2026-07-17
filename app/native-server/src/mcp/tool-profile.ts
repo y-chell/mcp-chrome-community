@@ -38,11 +38,38 @@ const SEARCH_TOOL_NAMES = new Set<string>([
 const TOOL_BY_NAME = new Map(TOOL_SCHEMAS.map((tool) => [tool.name, tool]));
 const META_TOOL_NAME_SET = new Set<string>(Object.values(META_TOOL_NAMES));
 
+const TOOL_SEARCH_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  [TOOL_NAMES.BROWSER.GET_WINDOWS_AND_TABS]: ['标签页', '浏览器标签页', '选项卡', '页签', '窗口'],
+  [TOOL_NAMES.BROWSER.LIST_FRAMES]: ['框架', '页面框架', 'iframe', '子页面'],
+  [TOOL_NAMES.BROWSER.SCAN_COMPACT]: ['页面扫描', '页面概览', '交互元素', '表单控件'],
+  [TOOL_NAMES.BROWSER.READ_PAGE]: ['读取页面', '页面内容', '无障碍树', '交互元素'],
+  [TOOL_NAMES.BROWSER.NAVIGATE]: ['导航', '打开网页', '刷新页面', '前进后退'],
+  [TOOL_NAMES.BROWSER.SCREENSHOT]: ['截图', '网页截图', '屏幕截图', '截屏'],
+  [TOOL_NAMES.BROWSER.CLOSE_TABS]: ['关闭标签页', '关闭选项卡'],
+  [TOOL_NAMES.BROWSER.SWITCH_TAB]: ['切换标签页', '切换选项卡'],
+  [TOOL_NAMES.BROWSER.TAB_GROUP]: ['标签页分组', '选项卡分组', '标签组'],
+  [TOOL_NAMES.BROWSER.CLICK]: ['点击', '单击', '双击', '点击元素'],
+  [TOOL_NAMES.BROWSER.FILL]: ['表单', '填写表单', '输入框', '选择框', '勾选'],
+  [TOOL_NAMES.BROWSER.NETWORK_CAPTURE]: ['抓包', '网络抓包', '网络捕获', '请求响应'],
+  [TOOL_NAMES.BROWSER.NETWORK_REQUEST]: ['网络请求', 'HTTP请求', '发送请求', '接口请求'],
+  [TOOL_NAMES.BROWSER.KEYBOARD]: ['键盘', '按键', '输入文字', '快捷键'],
+  [TOOL_NAMES.BROWSER.JAVASCRIPT]: ['执行脚本', '运行脚本', 'JavaScript'],
+  [TOOL_NAMES.BROWSER.CDP_COMMAND]: ['CDP命令', '开发者协议', '调试协议'],
+  [TOOL_NAMES.BROWSER.CONSOLE]: ['控制台', '控制台日志', '浏览器日志', '日志'],
+  [TOOL_NAMES.BROWSER.FILE_UPLOAD]: ['上传文件', '文件上传'],
+  [TOOL_NAMES.BROWSER.CLIPBOARD]: ['剪贴板', '复制粘贴'],
+  [TOOL_NAMES.BROWSER.WAIT_FOR_TAB]: ['等待标签页', '等待选项卡'],
+  [TOOL_NAMES.BROWSER.WAIT_FOR]: ['等待元素', '等待文本', '等待网络', '等待下载'],
+  [TOOL_NAMES.BROWSER.HANDLE_DIALOG]: ['对话框', '弹窗', '确认框'],
+  [TOOL_NAMES.BROWSER.HANDLE_DOWNLOAD]: ['下载', '文件下载', '下载监听', '下载处理'],
+  [TOOL_NAMES.BROWSER.GIF_RECORDER]: ['录屏', '动图录制', 'GIF录制'],
+};
+
 export const META_TOOL_SCHEMAS: Tool[] = [
   {
     name: META_TOOL_NAMES.SEARCH,
     description:
-      'Search the complete mcp-chrome tool catalog, including tools hidden by the current profile. Use concise English capability keywords such as "network capture", "clipboard", or "tab group".',
+      'Search the complete mcp-chrome tool catalog, including tools hidden by the current profile. Use concise Chinese or English capability keywords such as "抓包", "network capture", "clipboard", or "tab group".',
     inputSchema: {
       type: 'object',
       properties: {
@@ -58,6 +85,13 @@ export const META_TOOL_SCHEMAS: Tool[] = [
         },
       },
       required: ['query'],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
     },
   },
   {
@@ -73,6 +107,13 @@ export const META_TOOL_SCHEMAS: Tool[] = [
         },
       },
       required: ['name'],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
     },
   },
   {
@@ -93,6 +134,13 @@ export const META_TOOL_SCHEMAS: Tool[] = [
         },
       },
       required: ['name'],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
     },
   },
 ];
@@ -128,6 +176,7 @@ export function getKnownBrowserTool(name: string): Tool | undefined {
 function jsonResult(payload: Record<string, unknown>, isError = false): CallToolResult {
   return {
     content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+    ...(!isError ? { structuredContent: payload } : {}),
     ...(isError ? { isError: true } : {}),
   };
 }
@@ -144,23 +193,44 @@ function getInputSummary(tool: Tool) {
 }
 
 function tokenize(value: string): string[] {
-  return value.toLowerCase().match(/[a-z0-9]+/g) || [];
+  return normalizeSearchText(value).match(/[\p{L}\p{N}]+/gu) || [];
+}
+
+function normalizeSearchText(value: string): string {
+  return value.normalize('NFKC').toLowerCase();
+}
+
+function compactSearchText(value: string): string {
+  return tokenize(value).join('');
 }
 
 function scoreTool(tool: Tool, query: string, tokens: string[]): number {
-  const name = tool.name.toLowerCase();
-  const description = (tool.description || '').toLowerCase();
-  const normalizedQuery = query.trim().toLowerCase();
+  const name = normalizeSearchText(tool.name);
+  const description = normalizeSearchText(tool.description || '');
+  const aliases = (TOOL_SEARCH_ALIASES[tool.name] || []).map(normalizeSearchText);
+  const normalizedQuery = normalizeSearchText(query.trim());
+  const compactQuery = compactSearchText(normalizedQuery);
   let score = 0;
 
   if (normalizedQuery && name.includes(normalizedQuery)) score += 100;
   if (normalizedQuery && description.includes(normalizedQuery)) score += 30;
+  if (normalizedQuery && aliases.some((alias) => alias === normalizedQuery)) score += 80;
+  else if (normalizedQuery && aliases.some((alias) => alias.includes(normalizedQuery))) score += 40;
+  if (
+    compactQuery &&
+    compactQuery !== normalizedQuery &&
+    aliases.some((alias) => compactSearchText(alias).includes(compactQuery))
+  ) {
+    score += 60;
+  }
 
   const nameParts = new Set(tokenize(name));
   for (const token of tokens) {
     if (nameParts.has(token)) score += 20;
     else if (name.includes(token)) score += 10;
     if (description.includes(token)) score += 3;
+    if (aliases.some((alias) => tokenize(alias).includes(token))) score += 12;
+    else if (aliases.some((alias) => alias.includes(token))) score += 8;
   }
 
   return score;
