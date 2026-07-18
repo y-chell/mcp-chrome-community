@@ -38,7 +38,7 @@ mcp-chrome-community register
 
 4. **在 CherryStudio 中使用**
 
-类型选streamableHttp。默认 url 填 `http://127.0.0.1:12306/mcp`；如果你改过 host 或 port，就按实际值填。可用环境变量：`CHROME_MCP_HOST` / `MCP_HTTP_HOST`、`CHROME_MCP_PORT` / `MCP_HTTP_PORT`。
+类型选streamableHttp。默认 url 填 `http://127.0.0.1:12306/mcp`。服务默认只监听本机回环地址；如果要监听局域网地址，必须设置至少 16 个字符的 `CHROME_MCP_AUTH_TOKEN`，监听 `0.0.0.0` 或 `::` 时还必须设置精确的 `CHROME_MCP_ALLOWED_HOSTS`。`CHROME_MCP_BIND_HOST` 控制实际监听地址；本机扩展和内部 Agent 建议继续通过默认的 `CHROME_MCP_HOST=127.0.0.1` 连接，远程客户端在自己的配置中填写局域网地址。远程连接只开放 MCP 传输路由，Agent API 仍限制为本机访问。完整示例见 [CLI MCP 配置指南](mcp-cli-config.md)。
 
 <img width="675" alt="截屏2025-06-11 15 00 29" src="https://github.com/user-attachments/assets/6631e9e4-57f9-477e-b708-6a285cc0d881" />
 

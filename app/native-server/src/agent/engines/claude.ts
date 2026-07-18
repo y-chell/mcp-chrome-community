@@ -4,7 +4,8 @@ import type { AgentEngine, EngineExecutionContext, EngineInitOptions } from './t
 import type { AgentMessage, RealtimeEvent } from '../types';
 import { detectCcr, validateCcrConfig } from '../ccr-detector';
 import { getProject } from '../project-service';
-import { getChromeMcpUrl } from '../../constant';
+import { getChromeMcpAuthHeaders, getChromeMcpUrl } from '../../constant';
+import { resolveClaudePermissionPolicy } from '../claude-permission-policy';
 
 // Images are provided to Claude Code via local file paths referenced in the prompt text.
 // Claude Code CLI reads images from local paths, so we write base64 images to temp files and reference them.
@@ -451,54 +452,13 @@ export class ClaudeEngine implements AgentEngine {
         await this.validateAndWarnCcrConfig(sessionId, requestId, ctx);
       }
 
-      // Resolve permission mode from session config or use default
-      // SDK default is 'default', but AgentChat defaults to 'bypassPermissions' for headless operation
-      const allowedPermissionModes = new Set([
-        'default',
-        'acceptEdits',
-        'bypassPermissions',
-        'plan',
-        'dontAsk',
-      ]);
-      const normalizedPermissionMode =
-        typeof permissionMode === 'string' ? permissionMode.trim() : '';
-
-      let resolvedPermissionMode: string;
-      if (normalizedPermissionMode === '') {
-        // No permission mode specified - use AgentChat default for headless operation
-        resolvedPermissionMode = 'bypassPermissions';
-      } else if (allowedPermissionModes.has(normalizedPermissionMode)) {
-        // Valid permission mode - use as specified
-        resolvedPermissionMode = normalizedPermissionMode;
-      } else {
-        // Invalid permission mode - fall back to SDK default and warn
-        console.error(
-          `[ClaudeEngine] Invalid permissionMode "${normalizedPermissionMode}", falling back to SDK default "default"`,
-        );
-        resolvedPermissionMode = 'default';
-      }
-
-      // allowDangerouslySkipPermissions must be true when using bypassPermissions mode
-      // SDK requirement: bypass mode requires explicit acknowledgment via allowDangerouslySkipPermissions=true
-      const resolvedAllowDangerouslySkipPermissions = (() => {
-        const explicitValue =
-          typeof allowDangerouslySkipPermissions === 'boolean'
-            ? allowDangerouslySkipPermissions
-            : undefined;
-
-        if (resolvedPermissionMode === 'bypassPermissions') {
-          // Force true for bypassPermissions mode - SDK requirement
-          if (explicitValue === false) {
-            console.error(
-              '[ClaudeEngine] Warning: allowDangerouslySkipPermissions=false is incompatible with bypassPermissions mode, forcing to true',
-            );
-          }
-          return true;
-        }
-
-        // For non-bypass modes, use explicit value or default to false
-        return explicitValue ?? false;
-      })();
+      const permissionPolicy = resolveClaudePermissionPolicy(
+        permissionMode,
+        allowDangerouslySkipPermissions,
+      );
+      const resolvedPermissionMode = permissionPolicy.permissionMode;
+      const resolvedAllowDangerouslySkipPermissions =
+        permissionPolicy.allowDangerouslySkipPermissions;
 
       // Parse optionsConfig for additional SDK options
       const optionsRecord =
@@ -604,7 +564,7 @@ export class ClaudeEngine implements AgentEngine {
         cwd: repoPath,
         additionalDirectories: [repoPath],
         model: resolvedModel,
-        // Permission settings are session-configurable (defaults preserve previous behavior)
+        // Dangerous bypass requires an explicit session mode and acknowledgement.
         permissionMode: resolvedPermissionMode,
         allowDangerouslySkipPermissions: resolvedAllowDangerouslySkipPermissions,
         // Enable streaming: emit stream_event with content_block_delta for real-time UI updates
@@ -740,6 +700,7 @@ export class ClaudeEngine implements AgentEngine {
           [CHROME_MCP_SERVER_NAME]: {
             type: 'http',
             url: getChromeMcpUrl(),
+            headers: getChromeMcpAuthHeaders(),
           },
         };
         console.error(`[ClaudeEngine] Chrome MCP server enabled: ${getChromeMcpUrl()}`);

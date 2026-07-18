@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { BRIDGE_VERSION, getChromeMcpUrl } from '../constant';
+import { BRIDGE_VERSION, getChromeMcpAuthHeaders, getChromeMcpUrl } from '../constant';
 
 export interface CliToolInvocation {
   /**
@@ -25,6 +25,8 @@ export interface AgentToolBridgeOptions {
    * If omitted, DEFAULT_SERVER_PORT from chrome-mcp-shared is used.
    */
   mcpUrl?: string;
+  /** Optional bearer token override for a protected MCP HTTP endpoint. */
+  authToken?: string;
 }
 
 /**
@@ -41,7 +43,12 @@ export class AgentToolBridge {
   constructor(options: AgentToolBridgeOptions = {}) {
     const url = options.mcpUrl || getChromeMcpUrl();
 
-    this.transport = new StreamableHTTPClientTransport(new URL(url));
+    const headers = options.authToken
+      ? { Authorization: `Bearer ${options.authToken}` }
+      : getChromeMcpAuthHeaders();
+    this.transport = new StreamableHTTPClientTransport(new URL(url), {
+      requestInit: { headers },
+    });
     this.client = new Client(
       {
         name: 'mcp-chrome-community-agent-bridge',

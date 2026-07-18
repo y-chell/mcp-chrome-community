@@ -797,7 +797,8 @@ async function handleSaveSessionSettings(settings: SessionSettings): Promise<voi
   try {
     await sessions.updateSession(sessionId, {
       model: settings.model || null,
-      permissionMode: settings.permissionMode || null,
+      permissionMode: settings.permissionMode,
+      allowDangerouslySkipPermissions: settings.allowDangerouslySkipPermissions,
       systemPromptConfig: settings.systemPromptConfig,
       optionsConfig: settings.optionsConfig,
     });

@@ -144,6 +144,44 @@
             </p>
           </div>
 
+          <!-- Codex execution policy -->
+          <div v-if="isCodexEngine" class="space-y-2">
+            <label
+              class="text-[10px] font-bold uppercase tracking-wider"
+              :style="{ color: 'var(--ac-text-subtle, #a8a29e)' }"
+            >
+              Sandbox Mode
+            </label>
+            <select
+              v-model="localCodexSandboxMode"
+              class="w-full px-2 py-1.5 text-xs"
+              :disabled="localCodexDangerousBypass"
+              :style="{
+                backgroundColor: 'var(--ac-surface, #ffffff)',
+                border: 'var(--ac-border-width, 1px) solid var(--ac-border, #e5e5e5)',
+                borderRadius: 'var(--ac-radius-button, 8px)',
+                color: 'var(--ac-text, #1a1a1a)',
+              }"
+            >
+              <option value="read-only">read-only</option>
+              <option value="workspace-write">workspace-write (recommended)</option>
+              <option value="danger-full-access">danger-full-access</option>
+            </select>
+            <label class="flex items-start gap-2 text-xs cursor-pointer">
+              <input v-model="localCodexDangerousBypass" type="checkbox" class="mt-0.5" />
+              <span :style="{ color: 'var(--ac-text, #1a1a1a)' }">
+                Disable Codex approvals and sandboxing
+              </span>
+            </label>
+            <p
+              v-if="localCodexDangerousBypass"
+              class="text-[10px]"
+              :style="{ color: 'var(--ac-danger, #dc2626)' }"
+            >
+              Dangerous: Codex commands will run without approval or sandbox isolation.
+            </p>
+          </div>
+
           <!-- Permission Mode (Claude only) -->
           <div v-if="isClaudeEngine" class="space-y-2">
             <label
@@ -162,7 +200,6 @@
                 color: 'var(--ac-text, #1a1a1a)',
               }"
             >
-              <option value="">Default</option>
               <option value="default">default - Ask for approval</option>
               <option value="acceptEdits">acceptEdits - Auto-accept file edits</option>
               <option value="bypassPermissions">bypassPermissions - Auto-accept all</option>
@@ -172,6 +209,19 @@
             <p class="text-[10px]" :style="{ color: 'var(--ac-text-subtle, #a8a29e)' }">
               Controls how the Claude SDK handles tool approval requests.
             </p>
+            <label
+              v-if="localPermissionMode === 'bypassPermissions'"
+              class="flex items-start gap-2 text-xs cursor-pointer"
+            >
+              <input
+                v-model="localAllowDangerouslySkipPermissions"
+                type="checkbox"
+                class="mt-0.5"
+              />
+              <span :style="{ color: 'var(--ac-danger, #dc2626)' }">
+                I understand that Claude will run tools without permission prompts.
+              </span>
+            </label>
           </div>
 
           <!-- System Prompt Config (Claude only) -->
@@ -358,7 +408,7 @@
             color: 'var(--ac-accent-contrast, #ffffff)',
             borderRadius: 'var(--ac-radius-button, 8px)',
           }"
-          :disabled="isSaving"
+          :disabled="isSaving || !canSave"
           @click="handleSave"
         >
           {{ isSaving ? 'Saving...' : 'Save' }}
@@ -375,6 +425,7 @@ import type {
   AgentManagementInfo,
   AgentSystemPromptConfig,
   CodexReasoningEffort,
+  CodexSandboxMode,
   AgentSessionOptionsConfig,
 } from 'chrome-mcp-shared';
 import {
@@ -399,14 +450,18 @@ const emit = defineEmits<{
 export interface SessionSettings {
   model: string;
   permissionMode: string;
+  allowDangerouslySkipPermissions: boolean;
   systemPromptConfig: AgentSystemPromptConfig | null;
   optionsConfig?: AgentSessionOptionsConfig;
 }
 
 // Local state
 const localModel = ref('');
-const localPermissionMode = ref('');
+const localPermissionMode = ref('default');
+const localAllowDangerouslySkipPermissions = ref(false);
 const localReasoningEffort = ref<CodexReasoningEffort>('medium');
+const localCodexSandboxMode = ref<CodexSandboxMode>('workspace-write');
+const localCodexDangerousBypass = ref(false);
 const localUseCustomPrompt = ref(false);
 const localCustomPrompt = ref('');
 const localAppendToPrompt = ref(false);
@@ -415,6 +470,12 @@ const localPromptAppend = ref('');
 // Computed
 const isClaudeEngine = computed(() => props.session?.engineName === 'claude');
 const isCodexEngine = computed(() => props.session?.engineName === 'codex');
+const canSave = computed(
+  () =>
+    !isClaudeEngine.value ||
+    localPermissionMode.value !== 'bypassPermissions' ||
+    localAllowDangerouslySkipPermissions.value,
+);
 
 // Get available reasoning efforts based on selected model
 const availableReasoningEfforts = computed<readonly CodexReasoningEffort[]>(() => {
@@ -442,7 +503,15 @@ watch(
   (session) => {
     if (session) {
       localModel.value = session.model || '';
-      localPermissionMode.value = session.permissionMode || '';
+      if (session.engineName === 'claude') {
+        localPermissionMode.value = session.permissionMode || 'default';
+        localAllowDangerouslySkipPermissions.value =
+          session.permissionMode === 'bypassPermissions' &&
+          session.allowDangerouslySkipPermissions === true;
+      } else {
+        localPermissionMode.value = 'default';
+        localAllowDangerouslySkipPermissions.value = false;
+      }
 
       // Initialize reasoning effort from session's codex config
       const codexConfig = session.optionsConfig?.codexConfig;
@@ -451,6 +520,8 @@ watch(
       } else {
         localReasoningEffort.value = 'medium';
       }
+      localCodexSandboxMode.value = codexConfig?.sandboxMode ?? 'workspace-write';
+      localCodexDangerousBypass.value = codexConfig?.dangerouslyBypassApprovalsAndSandbox === true;
 
       // Parse system prompt config based on type
       const config = session.systemPromptConfig;
@@ -532,6 +603,8 @@ function handleSave(): void {
       codexConfig: {
         ...existingCodexConfig,
         reasoningEffort: normalizedReasoningEffort.value,
+        sandboxMode: localCodexSandboxMode.value,
+        dangerouslyBypassApprovalsAndSandbox: localCodexDangerousBypass.value,
       },
     };
   }
@@ -539,6 +612,9 @@ function handleSave(): void {
   const settings: SessionSettings = {
     model: localModel.value.trim(),
     permissionMode: localPermissionMode.value,
+    allowDangerouslySkipPermissions:
+      localPermissionMode.value === 'bypassPermissions' &&
+      localAllowDangerouslySkipPermissions.value,
     systemPromptConfig,
     optionsConfig,
   };

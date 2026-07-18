@@ -135,7 +135,13 @@ Add the following configuration to your MCP client configuration (using CherrySt
 }
 ```
 
-Default URL is `http://127.0.0.1:12306/mcp`. If you override host or port with `CHROME_MCP_HOST` / `MCP_HTTP_HOST` or `CHROME_MCP_PORT` / `MCP_HTTP_PORT`, update the client URL to match your actual address.
+Default URL is `http://127.0.0.1:12306/mcp`. The server listens on loopback only and keeps bearer
+authentication optional for existing local configurations. `CHROME_MCP_BIND_HOST` controls the
+actual listen address, while `CHROME_MCP_HOST` / `MCP_HTTP_HOST` controls the address used by
+internal clients. Any non-loopback listener requires `CHROME_MCP_AUTH_TOKEN`; wildcard listeners
+also require `CHROME_MCP_ALLOWED_HOSTS`. Only MCP transport routes accept remote clients; Agent and
+extension HTTP routes remain local-only. See [CLI MCP Configuration](docs/mcp-cli-config.md) for
+Codex, Claude Code, authentication, and session-limit examples.
 
 #### Using STDIO Connection (Alternative)
 

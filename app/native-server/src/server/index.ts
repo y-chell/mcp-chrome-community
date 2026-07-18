@@ -16,6 +16,7 @@ import {
   SERVER_CONFIG,
   HTTP_STATUS,
   ERROR_MESSAGES,
+  getChromeMcpBindHost,
 } from '../constant';
 import { NativeMessagingHost } from '../native-messaging-host';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
@@ -29,6 +30,19 @@ import { CodexEngine } from '../agent/engines/codex';
 import { ClaudeEngine } from '../agent/engines/claude';
 import { closeDb } from '../agent/db';
 import { registerAgentRoutes } from './routes';
+import {
+  createMcpHttpSecurityGuard,
+  isLoopbackRemoteAddress,
+  isMcpTransportPath,
+  parseMcpHttpSecurityConfig,
+  type McpHttpSecurityConfig,
+  type McpHttpSecurityGuard,
+} from './mcp-http-security';
+import {
+  McpSessionCapacityError,
+  McpSessionRegistry,
+  type McpSessionTransportMap,
+} from './mcp-session-registry';
 
 // ============================================================
 // Types
@@ -36,6 +50,37 @@ import { registerAgentRoutes } from './routes';
 
 interface ExtensionRequestPayload {
   data?: unknown;
+}
+
+interface ServerMcpTransports extends McpSessionTransportMap {
+  'streamable-http': StreamableHTTPServerTransport;
+  sse: SSEServerTransport;
+}
+
+const MCP_SESSION_SWEEP_INTERVAL_MS = 60_000;
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) {
+    return fallback;
+  }
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return value;
+}
+
+function getSingleHeader(value: string | string[] | undefined): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function getMcpSessionId(request: FastifyRequest): string | undefined {
+  const sessionId = getSingleHeader(request.headers['mcp-session-id']);
+  return sessionId && /^[\x21-\x7e]{1,128}$/.test(sessionId) ? sessionId : undefined;
 }
 
 // ============================================================
@@ -46,13 +91,22 @@ export class Server {
   private fastify: FastifyInstance;
   public isRunning = false;
   private nativeHost: NativeMessagingHost | null = null;
-  private transportsMap: Map<string, StreamableHTTPServerTransport | SSEServerTransport> =
-    new Map();
+  private readonly mcpSecurityConfig: McpHttpSecurityConfig;
+  private readonly mcpSecurityGuard: McpHttpSecurityGuard;
+  private readonly mcpSessions: McpSessionRegistry<ServerMcpTransports>;
+  private mcpSessionSweepTimer: NodeJS.Timeout | null = null;
+  private mcpSessionSweepInProgress = false;
   private agentStreamManager: AgentStreamManager;
   private agentChatService: AgentChatService;
 
   constructor() {
     this.fastify = Fastify({ logger: SERVER_CONFIG.LOGGER_ENABLED });
+    this.mcpSecurityConfig = parseMcpHttpSecurityConfig({ listenHost: getChromeMcpBindHost() });
+    this.mcpSecurityGuard = createMcpHttpSecurityGuard(this.mcpSecurityConfig);
+    this.mcpSessions = new McpSessionRegistry<ServerMcpTransports>({
+      maxSessions: readPositiveIntegerEnv('CHROME_MCP_MAX_SESSIONS', 64),
+      idleTtlMs: readPositiveIntegerEnv('CHROME_MCP_SESSION_IDLE_TTL_MS', 30 * 60 * 1000),
+    });
     this.agentStreamManager = new AgentStreamManager();
     this.agentChatService = new AgentChatService({
       engines: [new CodexEngine(), new ClaudeEngine()],
@@ -69,20 +123,32 @@ export class Server {
     this.nativeHost = nativeHost;
   }
 
-  private async setupPlugins(): Promise<void> {
-    await this.fastify.register(cors, {
+  private setupPlugins(): void {
+    this.fastify.addHook('onRequest', async (request, reply) => {
+      if (
+        this.mcpSecurityConfig.isLoopbackListener ||
+        isMcpTransportPath(request.raw.url ?? request.url) ||
+        isLoopbackRemoteAddress(request.socket.remoteAddress)
+      ) {
+        return;
+      }
+
+      reply.code(HTTP_STATUS.FORBIDDEN).send({
+        error: 'Non-MCP HTTP routes are only available from the local machine.',
+      });
+    });
+
+    this.fastify.register(cors, {
       origin: (origin, cb) => {
         // Allow requests with no origin (e.g., curl, server-to-server)
         if (!origin) {
           return cb(null, true);
         }
-        // Check if origin matches any pattern in whitelist
-        const allowed = SERVER_CONFIG.CORS_ORIGIN.some((pattern) =>
-          pattern instanceof RegExp ? pattern.test(origin) : origin.startsWith(pattern),
-        );
-        cb(null, allowed);
+        cb(null, this.mcpSecurityConfig.allowedOrigins.has(origin));
       },
       methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Authorization', 'Content-Type', 'Mcp-Session-Id', 'Last-Event-ID'],
+      exposedHeaders: ['Mcp-Session-Id'],
       credentials: true,
     });
   }
@@ -194,16 +260,26 @@ export class Server {
 
   private setupMcpRoutes(): void {
     // SSE endpoint
-    this.fastify.get('/sse', async (_, reply) => {
+    this.fastify.get('/sse', { preHandler: this.mcpSecurityGuard }, async (_, reply) => {
+      if (!this.mcpSessions.canAcceptNewSession()) {
+        reply.code(HTTP_STATUS.TOO_MANY_REQUESTS).send({
+          error: ERROR_MESSAGES.MCP_SESSION_LIMIT_REACHED,
+        });
+        return;
+      }
+
+      let transport: SSEServerTransport | undefined;
       try {
         reply.hijack();
 
-        const transport = new SSEServerTransport('/messages', reply.raw);
-        this.transportsMap.set(transport.sessionId, transport);
+        transport = new SSEServerTransport('/messages', reply.raw);
+        this.mcpSessions.register(transport.sessionId, 'sse', transport);
 
-        reply.raw.on('close', () => {
-          this.transportsMap.delete(transport.sessionId);
-        });
+        const removeSession = () => {
+          void this.mcpSessions.remove(transport!.sessionId, 'sse');
+        };
+        transport.onclose = removeSession;
+        reply.raw.once('close', removeSession);
 
         const server = createMcpServer({
           sessionId: transport.sessionId,
@@ -211,6 +287,11 @@ export class Server {
         });
         await server.connect(transport);
       } catch (error) {
+        if (transport) {
+          await this.mcpSessions
+            .remove(transport.sessionId, 'sse', { closeTransport: true })
+            .catch(() => undefined);
+        }
         this.sendRawText(
           reply,
           HTTP_STATUS.INTERNAL_SERVER_ERROR,
@@ -220,17 +301,24 @@ export class Server {
     });
 
     // SSE messages endpoint
-    this.fastify.post('/messages', async (req, reply) => {
+    this.fastify.post('/messages', { preHandler: this.mcpSecurityGuard }, async (req, reply) => {
       try {
-        const { sessionId } = req.query as { sessionId?: string };
-        const transport = this.transportsMap.get(sessionId || '') as SSEServerTransport;
-        if (!sessionId || !transport) {
+        const { sessionId } = req.query as { sessionId?: unknown };
+        const normalizedSessionId =
+          typeof sessionId === 'string' && /^[\x21-\x7e]{1,128}$/.test(sessionId)
+            ? sessionId
+            : undefined;
+        const session = normalizedSessionId
+          ? this.mcpSessions.get(normalizedSessionId, 'sse')
+          : undefined;
+        if (!normalizedSessionId || !session) {
           reply.code(HTTP_STATUS.BAD_REQUEST).send('No transport found for sessionId');
           return;
         }
 
+        this.mcpSessions.touch(normalizedSessionId, 'sse');
         reply.hijack();
-        await transport.handlePostMessage(req.raw, reply.raw, req.body);
+        await session.transport.handlePostMessage(req.raw, reply.raw, req.body);
       } catch (error) {
         this.sendRawText(
           reply,
@@ -241,43 +329,70 @@ export class Server {
     });
 
     // MCP POST endpoint
-    this.fastify.post('/mcp', async (request, reply) => {
-      const sessionId = request.headers['mcp-session-id'] as string | undefined;
-      let transport: StreamableHTTPServerTransport | undefined = this.transportsMap.get(
-        sessionId || '',
-      ) as StreamableHTTPServerTransport;
-
-      if (transport) {
-        // Transport found, proceed
-      } else if (!sessionId && isInitializeRequest(request.body)) {
-        const newSessionId = randomUUID();
-        transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => newSessionId,
-          onsessioninitialized: (initializedSessionId) => {
-            if (transport && initializedSessionId === newSessionId) {
-              this.transportsMap.set(initializedSessionId, transport);
-            }
-          },
-        });
-
-        transport.onclose = () => {
-          if (transport?.sessionId && this.transportsMap.get(transport.sessionId)) {
-            this.transportsMap.delete(transport.sessionId);
-          }
-        };
-        await createMcpServer({
-          sessionId: newSessionId,
-          transport: 'streamable-http',
-        }).connect(transport);
-      } else {
-        reply.code(HTTP_STATUS.BAD_REQUEST).send({ error: ERROR_MESSAGES.INVALID_MCP_REQUEST });
+    this.fastify.post('/mcp', { preHandler: this.mcpSecurityGuard }, async (request, reply) => {
+      const rawSessionId = request.headers['mcp-session-id'];
+      const sessionId = getMcpSessionId(request);
+      if (rawSessionId !== undefined && !sessionId) {
+        reply.code(HTTP_STATUS.BAD_REQUEST).send({ error: ERROR_MESSAGES.INVALID_SESSION_ID });
         return;
       }
-
+      let transport: StreamableHTTPServerTransport | undefined;
+      let newSessionId: string | undefined;
       try {
+        if (sessionId) {
+          const session = this.mcpSessions.get(sessionId, 'streamable-http');
+          if (!session) {
+            reply.code(HTTP_STATUS.NOT_FOUND).send({ error: ERROR_MESSAGES.INVALID_SESSION_ID });
+            return;
+          }
+          this.mcpSessions.touch(sessionId, 'streamable-http');
+          transport = session.transport;
+        } else if (isInitializeRequest(request.body)) {
+          if (!this.mcpSessions.canAcceptNewSession()) {
+            reply.code(HTTP_STATUS.TOO_MANY_REQUESTS).send({
+              error: ERROR_MESSAGES.MCP_SESSION_LIMIT_REACHED,
+            });
+            return;
+          }
+
+          newSessionId = randomUUID();
+          transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => newSessionId!,
+            onsessioninitialized: (initializedSessionId) => {
+              if (transport && initializedSessionId === newSessionId) {
+                this.mcpSessions.register(initializedSessionId, 'streamable-http', transport);
+              }
+            },
+          });
+          transport.onclose = () => {
+            void this.mcpSessions.remove(newSessionId!, 'streamable-http');
+          };
+          await createMcpServer({
+            sessionId: newSessionId,
+            transport: 'streamable-http',
+          }).connect(transport);
+        } else {
+          reply.code(HTTP_STATUS.BAD_REQUEST).send({ error: ERROR_MESSAGES.INVALID_MCP_REQUEST });
+          return;
+        }
+
         reply.hijack();
         await transport.handleRequest(request.raw, reply.raw, request.body);
       } catch (error) {
+        if (newSessionId && transport) {
+          const removed = await this.mcpSessions
+            .remove(newSessionId, 'streamable-http', { closeTransport: true })
+            .catch(() => false);
+          if (!removed) {
+            await transport.close().catch(() => undefined);
+          }
+        }
+        if (error instanceof McpSessionCapacityError) {
+          this.sendRawJson(reply, HTTP_STATUS.TOO_MANY_REQUESTS, {
+            error: ERROR_MESSAGES.MCP_SESSION_LIMIT_REACHED,
+          });
+          return;
+        }
         this.sendRawJson(reply, HTTP_STATUS.INTERNAL_SERVER_ERROR, {
           error: ERROR_MESSAGES.MCP_REQUEST_PROCESSING_ERROR,
         });
@@ -285,21 +400,23 @@ export class Server {
     });
 
     // MCP GET endpoint (SSE stream)
-    this.fastify.get('/mcp', async (request, reply) => {
-      const sessionId = request.headers['mcp-session-id'] as string | undefined;
-      const transport = sessionId
-        ? (this.transportsMap.get(sessionId) as StreamableHTTPServerTransport)
-        : undefined;
-
-      if (!transport) {
+    this.fastify.get('/mcp', { preHandler: this.mcpSecurityGuard }, async (request, reply) => {
+      const sessionId = getMcpSessionId(request);
+      if (!sessionId) {
         reply.code(HTTP_STATUS.BAD_REQUEST).send({ error: ERROR_MESSAGES.INVALID_SSE_SESSION });
         return;
       }
+      const session = this.mcpSessions.get(sessionId, 'streamable-http');
+      if (!session) {
+        reply.code(HTTP_STATUS.NOT_FOUND).send({ error: ERROR_MESSAGES.INVALID_SSE_SESSION });
+        return;
+      }
 
+      this.mcpSessions.touch(sessionId, 'streamable-http');
       reply.hijack();
 
       try {
-        await transport.handleRequest(request.raw, reply.raw);
+        await session.transport.handleRequest(request.raw, reply.raw);
       } catch (error) {
         if (!reply.raw.writableEnded) {
           reply.raw.end();
@@ -312,25 +429,31 @@ export class Server {
     });
 
     // MCP DELETE endpoint
-    this.fastify.delete('/mcp', async (request, reply) => {
-      const sessionId = request.headers['mcp-session-id'] as string | undefined;
-      const transport = sessionId
-        ? (this.transportsMap.get(sessionId) as StreamableHTTPServerTransport)
-        : undefined;
-
-      if (!transport) {
+    this.fastify.delete('/mcp', { preHandler: this.mcpSecurityGuard }, async (request, reply) => {
+      const sessionId = getMcpSessionId(request);
+      if (!sessionId) {
         reply.code(HTTP_STATUS.BAD_REQUEST).send({ error: ERROR_MESSAGES.INVALID_SESSION_ID });
+        return;
+      }
+      const session = this.mcpSessions.get(sessionId, 'streamable-http');
+      if (!session) {
+        reply.code(HTTP_STATUS.NOT_FOUND).send({ error: ERROR_MESSAGES.INVALID_SESSION_ID });
         return;
       }
 
       try {
+        this.mcpSessions.touch(sessionId, 'streamable-http');
         reply.hijack();
-        await transport.handleRequest(request.raw, reply.raw);
+        await session.transport.handleRequest(request.raw, reply.raw);
+        await this.mcpSessions.remove(sessionId, 'streamable-http', { closeTransport: true });
         if (!reply.raw.writableEnded) {
           reply.raw.statusCode = HTTP_STATUS.NO_CONTENT;
           reply.raw.end();
         }
       } catch (error) {
+        await this.mcpSessions
+          .remove(sessionId, 'streamable-http', { closeTransport: true })
+          .catch(() => undefined);
         this.sendRawJson(reply, HTTP_STATUS.INTERNAL_SERVER_ERROR, {
           error: ERROR_MESSAGES.MCP_SESSION_DELETION_ERROR,
         });
@@ -341,6 +464,39 @@ export class Server {
   // ============================================================
   // Server Lifecycle
   // ============================================================
+
+  private startMcpSessionSweep(): void {
+    if (this.mcpSessionSweepTimer) {
+      return;
+    }
+    this.mcpSessionSweepTimer = setInterval(() => {
+      if (this.mcpSessionSweepInProgress) {
+        return;
+      }
+      this.mcpSessionSweepInProgress = true;
+      void this.mcpSessions
+        .closeExpired()
+        .then((result) => {
+          for (const failure of result.closeFailures) {
+            this.fastify.log.warn(
+              { err: failure.error, sessionId: failure.id, transport: failure.kind },
+              'Failed to close expired MCP session transport',
+            );
+          }
+        })
+        .finally(() => {
+          this.mcpSessionSweepInProgress = false;
+        });
+    }, MCP_SESSION_SWEEP_INTERVAL_MS);
+    this.mcpSessionSweepTimer.unref?.();
+  }
+
+  private stopMcpSessionSweep(): void {
+    if (this.mcpSessionSweepTimer) {
+      clearInterval(this.mcpSessionSweepTimer);
+      this.mcpSessionSweepTimer = null;
+    }
+  }
 
   public async start(port = NATIVE_SERVER_PORT, nativeHost: NativeMessagingHost): Promise<void> {
     if (!this.nativeHost) {
@@ -354,13 +510,14 @@ export class Server {
     }
 
     try {
-      await this.fastify.listen({ port, host: SERVER_CONFIG.HOST });
+      await this.fastify.listen({ port, host: this.mcpSecurityConfig.listenHost });
 
       // Set port environment variables after successful listen for Chrome MCP URL resolution
       process.env.CHROME_MCP_PORT = String(port);
       process.env.MCP_HTTP_PORT = String(port);
 
       this.isRunning = true;
+      this.startMcpSessionSweep();
     } catch (err) {
       this.isRunning = false;
       throw err;
@@ -373,19 +530,20 @@ export class Server {
     }
 
     try {
-      const activeTransports = Array.from(new Set(this.transportsMap.values()));
-      this.transportsMap.clear();
-
-      await Promise.allSettled(
-        activeTransports.map(async (transport) => {
-          await transport.close();
-        }),
-      );
+      this.stopMcpSessionSweep();
+      const cleanup = await this.mcpSessions.closeAll();
+      for (const failure of cleanup.closeFailures) {
+        this.fastify.log.warn(
+          { err: failure.error, sessionId: failure.id, transport: failure.kind },
+          'Failed to close MCP session transport during shutdown',
+        );
+      }
 
       await this.fastify.close();
       closeDb();
       this.isRunning = false;
     } catch (err) {
+      this.stopMcpSessionSweep();
       this.isRunning = false;
       closeDb();
       throw err;

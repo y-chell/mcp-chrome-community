@@ -11,7 +11,8 @@ import type { AgentEngine, EngineExecutionContext, EngineInitOptions } from './t
 import type { AgentMessage, RealtimeEvent } from '../types';
 import { AgentToolBridge } from '../tool-bridge';
 import { getProject } from '../project-service';
-import { getChromeMcpUrl } from '../../constant';
+import { getChromeMcpAuthTokenEnvName, getChromeMcpUrl } from '../../constant';
+import { getCodexExecutionPolicyArgs } from '../codex-execution-policy';
 
 type TodoListPhase = 'started' | 'update' | 'completed';
 
@@ -108,12 +109,13 @@ export class CodexEngine implements AgentEngine {
       'exec',
       '--json',
       '--skip-git-repo-check',
-      '--dangerously-bypass-approvals-and-sandbox',
       '--color',
       'never',
       '--cd',
       repoPath,
     ];
+
+    args.push(...getCodexExecutionPolicyArgs(resolvedConfig));
 
     // Add Codex configuration arguments
     args.push(...this.buildCodexConfigArgs(resolvedConfig));
@@ -122,9 +124,14 @@ export class CodexEngine implements AgentEngine {
     // Use a unique server name to avoid collision with any existing global config
     if (enableChromeMcp) {
       const chromeMcpUrl = getChromeMcpUrl();
-      // Set both url and type for complete HTTP MCP server configuration
       args.push('-c', `mcp_servers.chrome_mcp_http.url=${JSON.stringify(chromeMcpUrl)}`);
-      args.push('-c', `mcp_servers.chrome_mcp_http.type="http"`);
+      const authTokenEnvName = getChromeMcpAuthTokenEnvName();
+      if (authTokenEnvName) {
+        args.push(
+          '-c',
+          `mcp_servers.chrome_mcp_http.bearer_token_env_var=${JSON.stringify(authTokenEnvName)}`,
+        );
+      }
       console.error(`[CodexEngine] Chrome MCP server enabled: ${chromeMcpUrl}`);
     } else {
       console.error('[CodexEngine] Chrome MCP server disabled');
@@ -726,7 +733,6 @@ Work directly in the current directory. Do not create subdirectories unless spec
     pushConfig('include_plan_tool', config.includePlanTool);
     pushConfig('tools.web_search_request', config.enableWebSearch);
     pushConfig('use_experimental_streamable_shell_tool', config.useStreamableShell);
-    pushConfig('sandbox_mode', config.sandboxMode);
     pushConfig('max_turns', config.maxTurns);
     pushConfig('max_thinking_tokens', config.maxThinkingTokens);
     pushConfig('reasoning_effort', config.reasoningEffort);

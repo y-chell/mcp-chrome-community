@@ -20,6 +20,7 @@ import {
   CHROME_MCP_PORT_ENV,
   MCP_HTTP_HOST_ENV,
   MCP_HTTP_PORT_ENV,
+  getChromeMcpAuthHeaders,
   getChromeMcpHost,
   getChromeMcpPort,
 } from '../constant';
@@ -114,7 +115,9 @@ export const ensureMcpClient = async () => {
       { name: 'mcp-chrome-community-proxy', version: BRIDGE_VERSION },
       { capabilities: {} },
     );
-    const transport = new StreamableHTTPClientTransport(resolveMcpServerUrl(), {});
+    const transport = new StreamableHTTPClientTransport(resolveMcpServerUrl(), {
+      requestInit: { headers: getChromeMcpAuthHeaders() },
+    });
     await mcpClient.connect(transport);
     return mcpClient;
   } catch (error) {

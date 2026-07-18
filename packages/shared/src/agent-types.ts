@@ -318,8 +318,10 @@ export interface CodexEngineConfig {
   enableWebSearch: boolean;
   /** Use experimental streamable shell tool. Default: true */
   useStreamableShell: boolean;
-  /** Sandbox mode for command execution. Default: 'danger-full-access' */
+  /** Sandbox mode for command execution. Default: 'workspace-write' */
   sandboxMode: CodexSandboxMode;
+  /** Explicitly disable Codex approvals and sandboxing. Default: false */
+  dangerouslyBypassApprovalsAndSandbox: boolean;
   /** Maximum number of turns. Default: 20 */
   maxTurns: number;
   /** Maximum thinking tokens. Default: 4096 */
@@ -336,10 +338,10 @@ export interface CodexEngineConfig {
  * Default auto instructions for Codex to act autonomously.
  * Aligned with other/cweb implementation.
  */
-export const CODEX_AUTO_INSTRUCTIONS = `Act autonomously without asking for confirmations.
+export const CODEX_AUTO_INSTRUCTIONS = `Act autonomously within the configured sandbox and approval policy.
 Use apply_patch to create and modify files directly in the current working directory (do not create subdirectories unless the user explicitly requests it).
 Use exec_command to run, build, and test as needed.
-You have full permissions. Keep taking concrete actions until the task is complete.
+Keep taking concrete actions until the task is complete.
 Respect the existing project structure when creating or modifying files.
 Prefer concise status updates over questions.`;
 
@@ -352,7 +354,8 @@ export const DEFAULT_CODEX_CONFIG: CodexEngineConfig = {
   includePlanTool: true,
   enableWebSearch: true,
   useStreamableShell: true,
-  sandboxMode: 'danger-full-access',
+  sandboxMode: 'workspace-write',
+  dangerouslyBypassApprovalsAndSandbox: false,
   maxTurns: 20,
   maxThinkingTokens: 4096,
   reasoningEffort: 'medium',

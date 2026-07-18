@@ -133,7 +133,7 @@ mcp-chrome-community register
 }
 ```
 
-默认地址是 `http://127.0.0.1:12306/mcp`。如果你改了 host 或 port，就把这里同步改掉。可用环境变量：`CHROME_MCP_HOST` / `MCP_HTTP_HOST`、`CHROME_MCP_PORT` / `MCP_HTTP_PORT`。
+默认地址是 `http://127.0.0.1:12306/mcp`。服务默认只监听回环地址，为兼容现有本机配置，Bearer 鉴权默认不启用。`CHROME_MCP_BIND_HOST` 控制实际监听地址，`CHROME_MCP_HOST` / `MCP_HTTP_HOST` 控制内部客户端使用的地址。只要监听非回环地址，就必须设置 `CHROME_MCP_AUTH_TOKEN`；监听 `0.0.0.0` 或 `::` 时还必须设置 `CHROME_MCP_ALLOWED_HOSTS`。远程客户端只能访问 MCP 传输路由，Agent 和扩展 HTTP 接口仍限制为本机访问。Codex、Claude Code、鉴权及会话限制配置见 [CLI MCP 配置指南](docs/mcp-cli-config.md)。
 
 #### 使用stdio的方式连接（备选）
 

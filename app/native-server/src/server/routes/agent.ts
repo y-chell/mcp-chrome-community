@@ -47,6 +47,7 @@ import { openDirectoryPicker } from '../../agent/directory-picker';
 import type { EngineName } from '../../agent/engines/types';
 import { attachmentService } from '../../agent/attachment-service';
 import { openProjectDirectory, openFileInVSCode } from '../../agent/open-project';
+import { ClaudePermissionPolicyError } from '../../agent/claude-permission-policy';
 import type {
   AttachmentStatsResponse,
   AttachmentCleanupRequest,
@@ -335,6 +336,9 @@ export function registerAgentRoutes(fastify: FastifyInstance, options: AgentRout
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         fastify.log.error({ err: error }, 'Failed to create session');
+        if (error instanceof ClaudePermissionPolicyError) {
+          return reply.status(HTTP_STATUS.BAD_REQUEST).send({ error: message });
+        }
         return reply.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).send({
           error: message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
         });
@@ -396,6 +400,9 @@ export function registerAgentRoutes(fastify: FastifyInstance, options: AgentRout
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         fastify.log.error({ err: error }, 'Failed to update session');
+        if (error instanceof ClaudePermissionPolicyError) {
+          return reply.status(HTTP_STATUS.BAD_REQUEST).send({ error: message });
+        }
         return reply.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).send({
           error: message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
         });

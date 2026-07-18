@@ -23,11 +23,6 @@ export const TIMEOUTS = {
 // Server configuration
 export const SERVER_CONFIG = {
   HOST: '127.0.0.1',
-  /**
-   * CORS origin whitelist - only allow Chrome/Firefox extensions and local debugging.
-   * Use RegExp patterns for extension origins, string for exact match.
-   */
-  CORS_ORIGIN: [/^chrome-extension:\/\//, /^moz-extension:\/\//, 'http://127.0.0.1'] as const,
   LOGGER_ENABLED: false,
 } as const;
 
@@ -37,7 +32,10 @@ export const HTTP_STATUS = {
   CREATED: 201,
   NO_CONTENT: 204,
   BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
   NOT_FOUND: 404,
+  TOO_MANY_REQUESTS: 429,
   INTERNAL_SERVER_ERROR: 500,
   GATEWAY_TIMEOUT: 504,
 } as const;
@@ -53,6 +51,7 @@ export const ERROR_MESSAGES = {
   MCP_SESSION_DELETION_ERROR: 'Internal server error during MCP session deletion.',
   MCP_REQUEST_PROCESSING_ERROR: 'Internal server error during MCP request processing.',
   INVALID_SSE_SESSION: 'Invalid or missing MCP session ID for SSE.',
+  MCP_SESSION_LIMIT_REACHED: 'MCP session limit reached. Retry after an existing session closes.',
 } as const;
 
 // ============================================================
@@ -67,6 +66,9 @@ export const CHROME_MCP_PORT_ENV = 'CHROME_MCP_PORT';
 export const MCP_HTTP_PORT_ENV = 'MCP_HTTP_PORT';
 export const CHROME_MCP_HOST_ENV = 'CHROME_MCP_HOST';
 export const MCP_HTTP_HOST_ENV = 'MCP_HTTP_HOST';
+export const CHROME_MCP_BIND_HOST_ENV = 'CHROME_MCP_BIND_HOST';
+export const CHROME_MCP_AUTH_TOKEN_ENV = 'CHROME_MCP_AUTH_TOKEN';
+export const MCP_HTTP_AUTH_TOKEN_ENV = 'MCP_HTTP_AUTH_TOKEN';
 
 /**
  * Get the host clients should use when connecting to the local Chrome MCP HTTP endpoint.
@@ -93,5 +95,40 @@ export function getChromeMcpPort(): number {
  * This URL is used by Claude/Codex agents to connect to the MCP server.
  */
 export function getChromeMcpUrl(): string {
-  return `http://${getChromeMcpHost()}:${getChromeMcpPort()}/mcp`;
+  const host = getChromeMcpHost();
+  const urlHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  return `http://${urlHost}:${getChromeMcpPort()}/mcp`;
+}
+
+/** Get the Fastify listen address. Kept separate from the client-facing host. */
+export function getChromeMcpBindHost(): string {
+  const host = process.env[CHROME_MCP_BIND_HOST_ENV]?.trim();
+  return host || SERVER_CONFIG.HOST;
+}
+
+/**
+ * Read the optional static bearer token used by the local MCP HTTP transport.
+ * CHROME_MCP_AUTH_TOKEN is preferred; the MCP_HTTP_AUTH_TOKEN name is retained
+ * for compatibility with older launch scripts.
+ */
+export function getChromeMcpAuthToken(): string | undefined {
+  const envName = getChromeMcpAuthTokenEnvName();
+  const raw = envName ? process.env[envName] : undefined;
+  const token = typeof raw === 'string' ? raw.trim() : '';
+  return token || undefined;
+}
+
+export function getChromeMcpAuthTokenEnvName(): string | undefined {
+  if (process.env[CHROME_MCP_AUTH_TOKEN_ENV]?.trim()) {
+    return CHROME_MCP_AUTH_TOKEN_ENV;
+  }
+  if (process.env[MCP_HTTP_AUTH_TOKEN_ENV]?.trim()) {
+    return MCP_HTTP_AUTH_TOKEN_ENV;
+  }
+  return undefined;
+}
+
+export function getChromeMcpAuthHeaders(): Record<string, string> {
+  const token = getChromeMcpAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }

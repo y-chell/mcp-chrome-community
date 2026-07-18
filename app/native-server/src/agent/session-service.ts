@@ -10,6 +10,10 @@ import { randomUUID } from 'node:crypto';
 import { eq, desc, and, asc } from 'drizzle-orm';
 import { getDb, sessions, messages, type SessionRow } from './db';
 import type { EngineName } from './engines/types';
+import {
+  ClaudePermissionPolicyError,
+  resolveClaudePermissionPolicy,
+} from './claude-permission-policy';
 
 // ============================================================
 // Types
@@ -199,15 +203,10 @@ export async function createSession(
   const db = getDb();
   const now = new Date().toISOString();
 
-  // Resolve permission mode - AgentChat defaults to bypassPermissions for headless operation
-  const resolvedPermissionMode = options.permissionMode?.trim() || 'bypassPermissions';
-
-  // SDK requires allowDangerouslySkipPermissions=true when using bypassPermissions mode
-  // If explicitly provided, use that value; otherwise infer from permission mode
-  const resolvedAllowDangerouslySkipPermissions =
-    typeof options.allowDangerouslySkipPermissions === 'boolean'
-      ? options.allowDangerouslySkipPermissions
-      : resolvedPermissionMode === 'bypassPermissions';
+  const permissionPolicy = resolveClaudePermissionPolicy(
+    options.permissionMode,
+    options.allowDangerouslySkipPermissions,
+  );
 
   const sessionData = {
     id: options.id?.trim() || randomUUID(),
@@ -216,8 +215,8 @@ export async function createSession(
     engineSessionId: options.engineSessionId?.trim() || null,
     name: options.name?.trim() || null,
     model: options.model?.trim() || null,
-    permissionMode: resolvedPermissionMode,
-    allowDangerouslySkipPermissions: resolvedAllowDangerouslySkipPermissions ? '1' : null,
+    permissionMode: permissionPolicy.permissionMode,
+    allowDangerouslySkipPermissions: permissionPolicy.allowDangerouslySkipPermissions ? '1' : null,
     systemPromptConfig: stringifyJson(options.systemPromptConfig),
     optionsConfig: stringifyJson(options.optionsConfig),
     managementInfo: null,
@@ -382,12 +381,21 @@ export async function updateSession(sessionId: string, updates: UpdateSessionInp
     updateData.model = updates.model?.trim() || null;
   }
 
-  if (updates.permissionMode !== undefined) {
-    updateData.permissionMode = updates.permissionMode?.trim() || 'bypassPermissions';
-  }
-
-  if (updates.allowDangerouslySkipPermissions !== undefined) {
-    updateData.allowDangerouslySkipPermissions = updates.allowDangerouslySkipPermissions
+  if (
+    updates.permissionMode !== undefined ||
+    updates.allowDangerouslySkipPermissions !== undefined
+  ) {
+    if (updates.permissionMode === undefined) {
+      throw new ClaudePermissionPolicyError(
+        'permissionMode is required when updating allowDangerouslySkipPermissions',
+      );
+    }
+    const permissionPolicy = resolveClaudePermissionPolicy(
+      updates.permissionMode,
+      updates.allowDangerouslySkipPermissions,
+    );
+    updateData.permissionMode = permissionPolicy.permissionMode;
+    updateData.allowDangerouslySkipPermissions = permissionPolicy.allowDangerouslySkipPermissions
       ? '1'
       : null;
   }

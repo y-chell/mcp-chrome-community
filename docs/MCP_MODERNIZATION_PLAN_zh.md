@@ -6,7 +6,7 @@
 
 本项目的 MCP 层沿用了较早期的协议和 SDK 使用方式。当前实现可以工作，但没有充分利用现代 MCP 客户端已经支持的结构化结果、工具注解、动态工具目录通知、取消和进度上下文等能力，也存在动态工具发现阻塞、中文检索弱、工具契约分散等问题。
 
-本计划先处理 MCP 协议层和工具契约，不同时混入浏览器扩展私钥、Agent API 鉴权、构建链和权限收敛等独立安全议题。后者保留为后续专项，避免一次修改跨越过多边界。
+本计划先处理 MCP 协议层和工具契约，再按阶段收敛 HTTP 传输安全与 Agent 执行权限。浏览器扩展私钥、Agent API 鉴权、构建链和权限收敛以外的安全议题仍保持独立边界，避免一次修改跨越过多边界。
 
 截至 2026-07-17，项目继续采用稳定的 TypeScript SDK v1 系列，并把最低依赖基线提升到 `@modelcontextprotocol/sdk ^1.29.0` 与其要求的 `zod ^3.25.0`。SDK v2 此时仍处于 pre-alpha，不在生产迁移范围内；待稳定版发布后再单独评估高层 API 和导入路径迁移。
 
@@ -92,10 +92,10 @@ HTTP/SSE 传输的鉴权、Origin/Host 校验、会话生命周期和限流单�
 
 ### 第三阶段：HTTP 传输与会话安全
 
-- [ ] 为 Streamable HTTP/SSE 增加明确鉴权。
-- [ ] 使用外部中间件实施 Origin、Host、CORS 和速率限制。
-- [ ] 校验会话初始化、关闭、断线清理和重连行为。
-- [ ] 移除不安全的默认执行参数，改为显式配置。
+- [x] 为 Streamable HTTP/SSE 增加明确鉴权。
+- [x] 使用外部中间件实施 Origin、Host、CORS 和速率限制。
+- [x] 校验会话初始化、关闭、断线清理和重连行为。
+- [x] 移除不安全的默认执行参数，改为显式配置。
 
 ### 第四阶段：扩展端原生结构化结果
 
@@ -123,7 +123,7 @@ HTTP/SSE 传输的鉴权、Origin/Host 校验、会话生命周期和限流单�
 ## 暂不纳入本轮
 
 - 扩展 Manifest 中的固定私钥。
-- Agent API 鉴权和 Codex 沙箱参数。
+- Agent API 鉴权。
 - 全仓锁文件、构建脚本和 CI 假成功问题。
 - 扩展 Worker 打包和权限收敛。
 
@@ -203,3 +203,48 @@ Tasks API 已完成 SDK 1.29 级别的可用性评估，但没有进行对外试
 - 扩展端 `vue-tsc --noEmit` 仍有 168 个既有类型错误；本阶段修改文件中没有新增类型错误。
 
 下一阶段进入 HTTP 传输与会话安全，重点处理 Streamable HTTP/SSE 鉴权、Origin/Host 校验、会话生命周期和限流。录制、工作流与 CDP 内部取消可以作为并行的工具执行层专项继续推进，但不应阻塞传输安全收敛。
+
+## 2026-07-18 第三阶段实施结果
+
+第三阶段已完成 HTTP 传输安全、MCP 会话生命周期和 Agent 执行权限收敛。实现重点不是把旧 SSE 路径直接删除，而是让新旧入口共享同一套边界，并保留现有客户端的可迁移路径。
+
+### HTTP 传输安全
+
+- Streamable HTTP 的 `/mcp` 和兼容 SSE 的 `/sse`、`/messages` 都经过 Host、Origin、鉴权和限流检查。
+- 回环地址默认保持兼容；监听非回环地址时必须配置 `CHROME_MCP_AUTH_TOKEN`（兼容旧变量 `MCP_HTTP_AUTH_TOKEN`），并要求至少 16 个字符。
+- 监听 `0.0.0.0` 或 `::` 时必须显式配置 `CHROME_MCP_ALLOWED_HOSTS`，不接受通配符 Host/Origin。
+- Host 校验会规范化主机名、IPv4、IPv6 和可选端口；Origin 使用精确匹配；CORS 允许列表与请求前置校验使用同一配置来源。
+- 固定窗口限流默认每客户端每分钟 120 次，鉴权开启时按 token 指纹限流，未鉴权回环模式按请求 IP 限流；未通过鉴权的请求不会消耗限流配额。
+- Native Server 仍共用一个 Fastify 监听器，但非回环客户端只能访问 `/mcp`、`/sse` 和 `/messages`；Agent、扩展通信及健康检查路由继续限制为本机来源，避免启用远程 MCP 时顺带暴露未鉴权 Agent API。
+- 明文 HTTP 仍是内置监听器的传输形态。跨机器或不可信网络使用时，必须放在 TLS 反向代理或其他受控私网之后，不能把监听地址和 token 当作 TLS 替代品。反向代理只能发布 `/mcp`、`/sse` 和 `/messages`；代理从本机回环地址转发时，Native Server 无法再用来源地址隔离其他 HTTP 路由。
+
+### 会话生命周期
+
+- Streamable HTTP 和旧 SSE 入口统一使用 `McpSessionRegistry`，默认最多 64 个会话，空闲 30 分钟清理。
+- 初始化、带有效 `Mcp-Session-Id` 的请求、GET/DELETE、旧 SSE 消息投递分别校验会话类型；未知会话不再隐式创建。
+- DELETE、传输关闭、服务器停止和 TTL 清理都会关闭对应 transport；清理失败会记录日志但不会阻塞其他会话回收。
+- 初始化失败、会话达到容量上限和非法/未知会话 ID 都有独立错误分支，避免留下半初始化 transport。
+
+### 客户端与 Agent 配置
+
+- Native Server 内部的 Claude、Codex 和 stdio 代理会把 HTTP MCP 鉴权 token 以环境变量或 `Authorization` header 继续传递，避免“服务端已保护、内部客户端却连不上”的分叉行为。
+- `CHROME_MCP_BIND_HOST` 只控制监听地址，`CHROME_MCP_HOST` 只控制客户端生成的连接地址；两者不再混用。
+- Codex 默认改为 `workspace-write`，不再无条件加入 `--dangerously-bypass-approvals-and-sandbox`；只有会话配置显式开启危险开关时才加入。
+- Claude 新会话默认使用 `default` 权限模式；`bypassPermissions` 必须同时提交 `allowDangerouslySkipPermissions=true`。扩展设置页现在显示 Codex 沙箱/危险开关和 Claude 危险确认，后端也会拒绝不完整的危险配置。
+- 已有明确保存的 bypass 会话不被迁移脚本批量改写；数据库默认值和新建/更新路径已改为安全默认。
+
+### 验证结果
+
+- `chrome-mcp-shared` 构建通过。
+- Native Server `tsc --noEmit` 通过。
+- Native Server 11 个测试文件、91 个测试全部通过。
+- HTTP 安全、远程非 MCP 路由隔离、MCP 会话、Claude 权限和 Codex 执行策略的定向测试 6 个测试文件、45 个测试全部通过。
+- Chrome 扩展 57 个测试文件、725 个测试全部通过。
+- Chrome MV3 扩展 `1.0.11` 生产构建通过；`.output/chrome-mv3/manifest.json` 存在，版本为 `1.0.11`，清单中的具体脚本/页面/图标引用均存在，资源通配目录也已生成。
+- pnpm 8.15.9 离线 `--frozen-lockfile --lockfile-only --ignore-scripts` 校验通过。
+- `git diff --check` 通过。
+- 扩展端 `vue-tsc --noEmit` 仍有 168 个历史类型错误；本轮修改的 `AgentChat.vue` 和 `AgentSessionSettingsPanel.vue` 没有新增诊断。
+
+### 本阶段边界
+
+本阶段没有实现 Agent API 全局鉴权，也没有把内置 HTTP 监听器升级成 TLS 服务；这两项分别留给后续 API 安全和部署边界专项。MCP Tasks 仍保持暂缓，不因本阶段的会话注册表而对外暴露任务接口。
