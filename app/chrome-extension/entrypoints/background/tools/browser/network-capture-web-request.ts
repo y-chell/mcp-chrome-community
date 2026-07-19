@@ -100,7 +100,7 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
   private requestCounters: Map<number, number> = new Map(); // tabId -> count of captured requests
   private completedCaptures: Map<number, CompletedCaptureRecord> = new Map(); // tabId -> last completed result waiting to be read
   public static MAX_REQUESTS_PER_CAPTURE = LIMITS.MAX_NETWORK_REQUESTS; // Maximum capture request count
-  private listeners: { [key: string]: (details: any) => void } = {};
+  private listeners: Partial<Record<string, (details: any) => void>> = {};
 
   constructor() {
     super();
@@ -892,25 +892,28 @@ class NetworkCaptureStartTool extends BaseBrowserToolExecutor {
           }
 
           await startCapture(stagingTab.id);
-          tabToOperateOn = await chrome.tabs.update(stagingTab.id, {
+          const updatedTab = await chrome.tabs.update(stagingTab.id, {
             url: targetUrl,
             active: true,
           });
 
-          if (!tabToOperateOn?.id) {
+          if (!updatedTab?.id) {
             return createErrorResponse(`Failed to navigate staging tab to ${targetUrl}`);
           }
+          tabToOperateOn = updatedTab;
         } else {
           const matchingTabs = await chrome.tabs.query({ url: targetUrl });
-          if (matchingTabs.length === 0 || !matchingTabs[0]?.id) {
+          const matchedTab = matchingTabs[0];
+          const matchedTabId = matchedTab?.id;
+          if (typeof matchedTabId !== 'number') {
             return createErrorResponse(
               `No open tab matched URL pattern: ${targetUrl}. Open the page first, or pass a concrete https:// URL.`,
             );
           }
 
-          tabToOperateOn = matchingTabs[0];
+          tabToOperateOn = matchedTab;
           console.log(`NetworkCaptureV2: Found existing tab with URL pattern: ${targetUrl}`);
-          await startCapture(tabToOperateOn.id);
+          await startCapture(matchedTabId);
         }
       } else {
         // Use current active tab

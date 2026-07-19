@@ -928,26 +928,29 @@ class NetworkDebuggerStartTool extends BaseBrowserToolExecutor {
           }
 
           await startCapture(stagingTab.id);
-          tabToOperateOn = await chrome.tabs.update(stagingTab.id, {
+          const updatedTab = await chrome.tabs.update(stagingTab.id, {
             url: targetUrl,
             active: true,
           });
-          if (!tabToOperateOn?.id) {
+          if (!updatedTab?.id) {
             return createErrorResponse(`Failed to navigate staging tab to ${targetUrl}`);
           }
+          tabToOperateOn = updatedTab;
         } else {
           const existingTabs = await chrome.tabs.query({ url: targetUrl });
-          if (existingTabs.length === 0 || !existingTabs[0]?.id) {
+          const matchedTab = existingTabs[0];
+          const matchedTabId = matchedTab?.id;
+          if (typeof matchedTabId !== 'number') {
             return createErrorResponse(
               `No open tab matched URL pattern: ${targetUrl}. Open the page first, or pass a concrete https:// URL.`,
             );
           }
 
-          tabToOperateOn = existingTabs[0];
+          tabToOperateOn = matchedTab;
           // Ensure window gets focus and tab is truly activated
-          await chrome.windows.update(tabToOperateOn.windowId, { focused: true });
-          await chrome.tabs.update(tabToOperateOn.id, { active: true });
-          await startCapture(tabToOperateOn.id);
+          await chrome.windows.update(matchedTab.windowId, { focused: true });
+          await chrome.tabs.update(matchedTabId, { active: true });
+          await startCapture(matchedTabId);
         }
       } else {
         const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });

@@ -179,12 +179,11 @@ async function waitForAllFrames(
     }
 
     if (!firstError) {
+      const response = result.response;
       firstError =
         result.error ||
-        (result.response?.ok
-          ? result.response.value?.error || result.response.value?.reason
-          : undefined) ||
-        (!result.response?.ok ? result.response.error : undefined) ||
+        (response?.ok ? response.value?.error || response.value?.reason : undefined) ||
+        (response && !response.ok ? response.error : undefined) ||
         'unknown error';
     }
   }

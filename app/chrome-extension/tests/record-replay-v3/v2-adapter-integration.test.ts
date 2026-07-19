@@ -25,6 +25,14 @@ import { ifHandler } from '@/entrypoints/background/record-replay/actions/handle
 import { delayHandler } from '@/entrypoints/background/record-replay/actions/handlers/delay';
 import { adaptV2ActionHandlerToV3NodeDefinition } from '@/entrypoints/background/record-replay-v3/engine/plugins/v2-action-adapter';
 import { createV3E2EHarness, type V3E2EHarness, type RpcClient } from './v3-e2e-harness';
+import type { NodeExecutionResult } from '@/entrypoints/background/record-replay-v3/engine/plugins/types';
+
+function expectSucceeded(
+  result: NodeExecutionResult,
+): asserts result is Extract<NodeExecutionResult, { status: 'succeeded' }> {
+  expect(result.status).toBe('succeeded');
+  if (result.status !== 'succeeded') throw new Error('Expected a succeeded result');
+}
 
 // ==================== Test Fixtures ====================
 
@@ -178,7 +186,7 @@ describe('V2 Action Adapter Integration', () => {
 
       const result = await nodeDef.execute(mockCtx as any, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.next).toEqual({ kind: 'edgeLabel', label: 'yes' });
     });
 
@@ -210,7 +218,7 @@ describe('V2 Action Adapter Integration', () => {
 
       const result = await nodeDef.execute(mockCtx as any, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.next).toEqual({ kind: 'edgeLabel', label: 'no' });
     });
 
@@ -245,7 +253,7 @@ describe('V2 Action Adapter Integration', () => {
 
       const result = await nodeDef.execute(mockCtx as any, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.next).toEqual({ kind: 'edgeLabel', label: 'true' });
     });
 
@@ -295,7 +303,7 @@ describe('V2 Action Adapter Integration', () => {
 
       const result = await nodeDef.execute(mockCtx as any, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.next).toEqual({ kind: 'edgeLabel', label: 'in-progress' });
     });
   });
@@ -394,6 +402,7 @@ describe('V2 Action Adapter Integration', () => {
       };
 
       const result = await nodeDef.execute(mockCtx as any, node as any);
+      expectSucceeded(result);
       expect(result.next).toEqual({ kind: 'edgeLabel', label: 'true' });
     });
 
@@ -428,6 +437,7 @@ describe('V2 Action Adapter Integration', () => {
       };
 
       const result = await nodeDef.execute(mockCtx as any, node as any);
+      expectSucceeded(result);
       expect(result.next).toEqual({ kind: 'edgeLabel', label: 'true' });
     });
 
@@ -459,6 +469,7 @@ describe('V2 Action Adapter Integration', () => {
       };
 
       const result = await nodeDef.execute(mockCtx as any, node as any);
+      expectSucceeded(result);
       expect(result.next).toEqual({ kind: 'edgeLabel', label: 'true' });
     });
 
@@ -502,6 +513,7 @@ describe('V2 Action Adapter Integration', () => {
 
         const result = await nodeDef.execute(mockCtx as any, node as any);
         const expectedLabel = expected ? 'true' : 'false';
+        expectSucceeded(result);
         expect(result.next).toEqual({ kind: 'edgeLabel', label: expectedLabel });
       }
     });

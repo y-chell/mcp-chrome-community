@@ -349,14 +349,15 @@ describe('high-value page operation tools', () => {
 
   it('drags between selectors with interpolated mouse moves', async () => {
     vi.spyOn(computerTool as any, 'injectContentScript').mockResolvedValue(undefined);
-    vi.spyOn(computerTool as any, 'sendMessageToTab').mockImplementation(
-      async (_tabId: number, message: any) => {
-        if (message.selector === '#source') {
-          return { success: true, center: { x: 10, y: 20 } };
-        }
-        return { success: true, center: { x: 110, y: 220 } };
-      },
-    );
+    vi.spyOn(computerTool as any, 'sendMessageToTab').mockImplementation((async (
+      _tabId: number,
+      message: any,
+    ) => {
+      if (message.selector === '#source') {
+        return { success: true, center: { x: 10, y: 20 } };
+      }
+      return { success: true, center: { x: 110, y: 220 } };
+    }) as any);
     (chrome.debugger as any).getTargets = vi.fn().mockResolvedValue([]);
     (chrome.debugger.attach as any) = vi.fn().mockResolvedValue(undefined);
     (chrome.debugger.detach as any) = vi.fn().mockResolvedValue(undefined);
@@ -374,7 +375,8 @@ describe('high-value page operation tools', () => {
     expect(result.isError).toBe(false);
     const mouseMoves = (chrome.debugger.sendCommand as any).mock.calls.filter(
       (_call: unknown[]) =>
-        _call[1] === 'Input.dispatchMouseEvent' && _call[2]?.type === 'mouseMoved',
+        _call[1] === 'Input.dispatchMouseEvent' &&
+        (_call[2] as { type?: string } | undefined)?.type === 'mouseMoved',
     );
     expect(mouseMoves).toHaveLength(5);
     expect(parseJsonResult(result)).toMatchObject({

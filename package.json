@@ -29,7 +29,10 @@
     "clean:dist": "pnpm -r exec rm -rf dist .turbo",
     "clean:modules": "pnpm -r exec rm -rf node_modules && rm -rf node_modules",
     "clean": "npm run clean:dist && npm run clean:modules",
-    "typecheck": "pnpm -r exec tsc --noEmit",
+    "typecheck": "pnpm run build:shared && pnpm run typecheck:shared && pnpm run typecheck:native && pnpm run typecheck:extension",
+    "typecheck:shared": "pnpm --filter chrome-mcp-shared exec tsc --noEmit --pretty false",
+    "typecheck:native": "pnpm --filter mcp-chrome-community-bridge exec tsc --noEmit --pretty false",
+    "typecheck:extension": "pnpm --filter mcp-chrome-community-extension exec vue-tsc --noEmit --pretty false",
     "smoke:stdio": "pnpm --filter mcp-chrome-community-bridge smoke:stdio",
     "prepare": "husky"
   },

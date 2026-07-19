@@ -284,7 +284,7 @@
       :is-managing-cache="isManagingCache"
       @back="currentView = 'home'"
       @initialize-semantic-engine="initializeSemanticEngine"
-      @switch-model="switchModel"
+      @switch-model="(preset) => switchModel(preset as ModelPreset)"
       @retry-model-initialization="retryModelInitialization"
       @show-clear-confirmation="showClearConfirmation = true"
       @cleanup-cache="cleanupCache"

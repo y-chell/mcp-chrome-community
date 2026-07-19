@@ -12,6 +12,10 @@ function parseJsonResult(result: { content?: Array<{ type: string; text?: string
   return JSON.parse(String(text || '{}'));
 }
 
+function getTextResult(result: { content?: Array<{ type: string; text?: string }> }): string {
+  return result.content?.find((item) => item.type === 'text')?.text ?? '';
+}
+
 describe('upload status tracking', () => {
   const tabId = 51;
 
@@ -158,7 +162,7 @@ describe('upload status tracking', () => {
     } as any);
 
     expect(uploadResult.isError).toBe(true);
-    expect(uploadResult.content?.[0]?.text).toContain('disabled');
+    expect(getTextResult(uploadResult)).toContain('disabled');
     expect(withSessionSpy).not.toHaveBeenCalled();
   });
 
@@ -320,7 +324,7 @@ describe('upload status tracking', () => {
     } as any);
 
     expect(uploadResult.isError).toBe(true);
-    expect(uploadResult.content?.[0]?.text).toContain('uploadId=');
+    expect(getTextResult(uploadResult)).toContain('uploadId=');
 
     const statusResult = await uploadStatusTool.execute({
       tabId,

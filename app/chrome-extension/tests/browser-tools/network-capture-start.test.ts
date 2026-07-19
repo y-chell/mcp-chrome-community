@@ -12,6 +12,10 @@ function parseJsonResult(result: { content?: Array<{ type: string; text?: string
   return JSON.parse(String(text || '{}'));
 }
 
+function getTextResult(result: { content?: Array<{ type: string; text?: string }> }): string {
+  return result.content?.find((item) => item.type === 'text')?.text ?? '';
+}
+
 describe('network capture start behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -141,7 +145,7 @@ describe('network capture start behavior', () => {
     expect(result.isError).toBe(true);
     expect(chrome.tabs.create).not.toHaveBeenCalled();
     expect(startSpy).not.toHaveBeenCalled();
-    expect(result.content?.[0]?.text).toContain('No open tab matched URL pattern');
+    expect(getTextResult(result)).toContain('No open tab matched URL pattern');
   });
 
   it('returns cached webRequest results after an auto-stop', async () => {

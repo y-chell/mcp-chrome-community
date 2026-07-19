@@ -363,11 +363,7 @@
 
 <script lang="ts" setup>
 import { computed, inject, onUnmounted, ref, watch } from 'vue';
-import type {
-  AttachmentCleanupResponse,
-  AttachmentProjectStats,
-  AttachmentStatsResponse,
-} from 'chrome-mcp-shared';
+import type { AttachmentCleanupResponse, AttachmentStatsResponse } from 'chrome-mcp-shared';
 import { getLocalServerBaseUrl } from '@/common/constants';
 import { AGENT_SERVER_PORT_KEY } from '../../composables';
 
@@ -406,14 +402,16 @@ const totalFiles = computed(() => stats.value?.totalFiles ?? 0);
 const orphanProjectIds = computed(() => stats.value?.orphanProjectIds ?? []);
 const projects = computed(() => stats.value?.projects ?? []);
 
-const projectsSorted = computed<AttachmentProjectStats[]>(() => {
+type AttachmentProjectListItem = AttachmentStatsResponse['projects'][number];
+
+const projectsSorted = computed<AttachmentProjectListItem[]>(() => {
   return [...projects.value].sort((a, b) => (b.totalBytes ?? 0) - (a.totalBytes ?? 0));
 });
 
 /**
  * Check if a project can be selected (has files that exist).
  */
-function isSelectable(p: AttachmentProjectStats): boolean {
+function isSelectable(p: AttachmentProjectListItem): boolean {
   return p.exists === true && p.fileCount > 0;
 }
 
@@ -471,7 +469,7 @@ function formatBytes(bytes: number): string {
 /**
  * Get display title for a project.
  */
-function projectTitle(p: AttachmentProjectStats): string {
+function projectTitle(p: AttachmentProjectListItem): string {
   return p.projectName?.trim() || p.projectId;
 }
 

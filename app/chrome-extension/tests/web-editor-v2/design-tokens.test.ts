@@ -180,9 +180,7 @@ describe('token-resolver: resolveToken', () => {
     const div = document.createElement('div');
     document.body.append(div);
 
-    vi.spyOn(window, 'getComputedStyle').mockReturnValue({
-      getPropertyValue: () => '',
-    } as CSSStyleDeclaration);
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue(document.createElement('div').style);
 
     const resolver = createTokenResolver();
     const result = resolver.resolveToken(div, '--missing');
@@ -342,9 +340,7 @@ describe('design-tokens-service: basic operations', () => {
     document.body.append(div);
 
     // Mock to return no tokens
-    vi.spyOn(window, 'getComputedStyle').mockReturnValue({
-      getPropertyValue: () => '',
-    } as CSSStyleDeclaration);
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue(document.createElement('div').style);
 
     const service = createDesignTokensService();
     const result = service.getContextTokens(div);

@@ -60,7 +60,11 @@ function serializeTab(tab: chrome.tabs.Tab) {
   };
 }
 
-async function serializeGroup(group: chrome.tabGroups.TabGroup) {
+async function serializeGroup(group: chrome.tabGroups.TabGroup | undefined) {
+  if (!group) {
+    throw new Error('Chrome did not return the requested tab group');
+  }
+
   const tabs = await chrome.tabs.query({ groupId: group.id } as chrome.tabs.QueryInfo);
   return {
     groupId: group.id,

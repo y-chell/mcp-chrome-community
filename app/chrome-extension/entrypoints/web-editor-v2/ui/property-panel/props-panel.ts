@@ -667,6 +667,7 @@ export function createPropsPanel(options: PropsPanelOptions): PropsPanel {
         const filteredEnumValues = rawEnumValues.filter(
           (v): v is string => typeof v === 'string' && v.trim().length > 0,
         );
+        const stringValue = entry.value.kind === 'string' ? entry.value.value : '';
         const hasEnumValues =
           entryEditable && entry.value.kind === 'string' && filteredEnumValues.length > 0;
 
@@ -680,7 +681,7 @@ export function createPropsPanel(options: PropsPanelOptions): PropsPanel {
           select.dataset.propKind = 'enum';
           select.setAttribute('aria-label', `Select prop ${entry.key}`);
 
-          const currentValue = entry.value.value ?? '';
+          const currentValue = stringValue;
           const seen = new Set<string>();
 
           // Add current value first if not in enum list

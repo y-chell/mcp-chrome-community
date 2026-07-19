@@ -44,28 +44,29 @@ describe('screenshot output defaults', () => {
     };
 
     vi.spyOn(screenshotTool as any, 'injectContentScript').mockResolvedValue(undefined);
-    vi.spyOn(screenshotTool as any, 'sendMessageToTab').mockImplementation(
-      async (_tabId: number, message: Record<string, unknown>) => {
-        if (message.action === TOOL_MESSAGE_TYPES.SCREENSHOT_PREPARE_PAGE_FOR_CAPTURE) {
-          return { success: true };
-        }
-        if (message.action === TOOL_MESSAGE_TYPES.SCREENSHOT_GET_PAGE_DETAILS) {
-          return {
-            totalWidth: 1600,
-            totalHeight: 3200,
-            viewportWidth: 1280,
-            viewportHeight: 720,
-            devicePixelRatio: 1,
-            currentScrollX: 0,
-            currentScrollY: 0,
-          };
-        }
-        if (message.action === TOOL_MESSAGE_TYPES.SCREENSHOT_RESET_PAGE_AFTER_CAPTURE) {
-          return { success: true };
-        }
+    vi.spyOn(screenshotTool as any, 'sendMessageToTab').mockImplementation((async (
+      _tabId: number,
+      message: Record<string, unknown>,
+    ) => {
+      if (message.action === TOOL_MESSAGE_TYPES.SCREENSHOT_PREPARE_PAGE_FOR_CAPTURE) {
         return { success: true };
-      },
-    );
+      }
+      if (message.action === TOOL_MESSAGE_TYPES.SCREENSHOT_GET_PAGE_DETAILS) {
+        return {
+          totalWidth: 1600,
+          totalHeight: 3200,
+          viewportWidth: 1280,
+          viewportHeight: 720,
+          devicePixelRatio: 1,
+          currentScrollX: 0,
+          currentScrollY: 0,
+        };
+      }
+      if (message.action === TOOL_MESSAGE_TYPES.SCREENSHOT_RESET_PAGE_AFTER_CAPTURE) {
+        return { success: true };
+      }
+      return { success: true };
+    }) as any);
 
     (compressImage as any).mockResolvedValue({
       dataUrl: 'data:image/jpeg;base64,small',

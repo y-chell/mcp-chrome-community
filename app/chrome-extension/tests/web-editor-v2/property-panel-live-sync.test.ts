@@ -153,9 +153,8 @@ describe('property-panel: rAF throttling', () => {
     expect(rafCallCount).toBe(1);
 
     // Execute the callback
-    if (scheduledCallback) {
-      scheduledCallback(performance.now());
-    }
+    const callback = scheduledCallback as FrameRequestCallback | null;
+    callback?.(performance.now());
 
     // Only one refresh should have occurred
     expect(refreshCalls.length).toBe(1);

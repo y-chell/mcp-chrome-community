@@ -698,7 +698,7 @@ class CollectDebugEvidenceTool extends BaseBrowserToolExecutor {
 
     return {
       available: false,
-      source: consoleMode === 'buffer' ? 'buffer' : 'snapshot',
+      source: 'snapshot',
       historyAvailable: bufferWasActive,
       error:
         parsedSnapshot.error ||

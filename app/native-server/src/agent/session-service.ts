@@ -10,6 +10,14 @@ import { randomUUID } from 'node:crypto';
 import { eq, desc, and, asc } from 'drizzle-orm';
 import { getDb, sessions, messages, type SessionRow } from './db';
 import type { EngineName } from './engines/types';
+import type {
+  AgentManagementInfo,
+  AgentSession as SharedAgentSession,
+  AgentSessionOptionsConfig,
+  AgentSessionPreviewMeta,
+  AgentSystemPromptConfig,
+  AgentToolsConfig,
+} from 'chrome-mcp-shared';
 import {
   ClaudePermissionPolicyError,
   resolveClaudePermissionPolicy,
@@ -22,103 +30,29 @@ import {
 /**
  * System prompt configuration options.
  */
-export type SystemPromptConfig =
-  | { type: 'custom'; text: string }
-  | { type: 'preset'; preset: 'claude_code'; append?: string };
+export type SystemPromptConfig = AgentSystemPromptConfig;
 
 /**
  * Tools configuration - can be a list of tool names or a preset.
  */
-export type ToolsConfig = string[] | { type: 'preset'; preset: 'claude_code' };
+export type ToolsConfig = AgentToolsConfig;
 
 /**
  * Session options configuration (stored as JSON).
  */
-export interface SessionOptionsConfig {
-  settingSources?: string[];
-  allowedTools?: string[];
-  disallowedTools?: string[];
-  tools?: ToolsConfig;
-  betas?: string[];
-  maxThinkingTokens?: number;
-  maxTurns?: number;
-  maxBudgetUsd?: number;
-  mcpServers?: Record<string, unknown>;
-  outputFormat?: Record<string, unknown>;
-  enableFileCheckpointing?: boolean;
-  sandbox?: Record<string, unknown>;
-  env?: Record<string, string>;
-  /**
-   * Optional Codex-specific configuration overrides.
-   * Only applicable when using CodexEngine.
-   */
-  codexConfig?: Partial<import('chrome-mcp-shared').CodexEngineConfig>;
-}
+export type SessionOptionsConfig = AgentSessionOptionsConfig;
 
 /**
  * Cached management information from Claude SDK.
  */
-export interface ManagementInfo {
-  models?: Array<{ value: string; displayName: string; description: string }>;
-  commands?: Array<{ name: string; description: string; argumentHint: string }>;
-  account?: { email?: string; organization?: string; subscriptionType?: string };
-  mcpServers?: Array<{ name: string; status: string }>;
-  tools?: string[];
-  agents?: string[];
-  /** Plugins with name and path (SDK returns { name, path }[]) */
-  plugins?: Array<{ name: string; path?: string }>;
-  skills?: string[];
-  slashCommands?: string[];
-  model?: string;
-  permissionMode?: string;
-  cwd?: string;
-  outputStyle?: string;
-  betas?: string[];
-  claudeCodeVersion?: string;
-  apiKeySource?: string;
-  lastUpdated?: string;
-}
+export type ManagementInfo = AgentManagementInfo;
 
-/**
- * Structured preview metadata for session list display.
- * When present, allows rendering special styles (e.g., chip for web editor apply).
- */
-export interface AgentSessionPreviewMeta {
-  /** Compact display text (e.g., user's message or "Apply changes") */
-  displayText?: string;
-  /** Client metadata for special rendering */
-  clientMeta?: {
-    kind?: 'web_editor_apply_batch' | 'web_editor_apply_single';
-    pageUrl?: string;
-    elementCount?: number;
-    elementLabels?: string[];
-  };
-  /** Full content for tooltip preview (truncated to avoid payload bloat) */
-  fullContent?: string;
-}
+export type { AgentSessionPreviewMeta };
 
 /**
  * Agent session representation.
  */
-export interface AgentSession {
-  id: string;
-  projectId: string;
-  engineName: string;
-  engineSessionId?: string;
-  name?: string;
-  /** Preview text from first user message, for display in session list */
-  preview?: string;
-  /** Structured preview metadata for special rendering (e.g., web editor apply chip) */
-  previewMeta?: AgentSessionPreviewMeta;
-  model?: string;
-  permissionMode: string;
-  allowDangerouslySkipPermissions: boolean;
-  systemPromptConfig?: SystemPromptConfig;
-  optionsConfig?: SessionOptionsConfig;
-  managementInfo?: ManagementInfo;
-  createdAt: string;
-  updatedAt: string;
-}
+export type AgentSession = SharedAgentSession;
 
 /**
  * Options for creating a new session.

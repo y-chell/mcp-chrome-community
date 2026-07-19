@@ -8,6 +8,10 @@ function parseJsonResult(result: { content?: Array<{ type: string; text?: string
   return JSON.parse(String(text || '{}'));
 }
 
+function getTextResult(result: { content?: Array<{ type: string; text?: string }> }): string {
+  return result.content?.find((item) => item.type === 'text')?.text ?? '';
+}
+
 describe('wait_for and assert tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -147,8 +151,8 @@ describe('wait_for and assert tools', () => {
     } as any);
 
     expect(result.isError).toBe(true);
-    expect(result.content?.[0]?.text).toContain('assert failed:');
-    expect(result.content?.[0]?.text).toContain('title');
+    expect(getTextResult(result)).toContain('assert failed:');
+    expect(getTextResult(result)).toContain('title');
   });
 
   it('rejects sleep assertions', async () => {
@@ -161,7 +165,7 @@ describe('wait_for and assert tools', () => {
     } as any);
 
     expect(result.isError).toBe(true);
-    expect(result.content?.[0]?.text).toContain('does not support');
+    expect(getTextResult(result)).toContain('does not support');
   });
 
   it('cancels sleep waits with AbortError and clears the active timer', async () => {

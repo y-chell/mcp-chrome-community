@@ -82,6 +82,23 @@ export interface AgentAttachment {
 
 export type AgentCliPreference = 'claude' | 'codex' | 'cursor' | 'qwen' | 'glm';
 
+/** Client-provided metadata preserved with an agent request and its user message. */
+export interface AgentActRequestClientMeta {
+  kind?: 'web_editor_apply_batch' | 'web_editor_apply_single';
+  pageUrl?: string;
+  elementCount?: number;
+  elementLabels?: string[];
+  [key: string]: unknown;
+}
+
+/** Structured metadata stored on user messages that include persisted attachments. */
+export interface AgentMessageAttachmentMetadata {
+  attachments?: AttachmentMetadata[];
+  clientMeta?: AgentActRequestClientMeta;
+  displayText?: string;
+  [key: string]: unknown;
+}
+
 export interface AgentActRequest {
   instruction: string;
   cliPreference?: AgentCliPreference;
@@ -112,7 +129,7 @@ export interface AgentActRequest {
    * Optional client metadata to store with the user message.
    * For extension-specific context that should be preserved.
    */
-  clientMeta?: Record<string, unknown>;
+  clientMeta?: AgentActRequestClientMeta;
   /**
    * Optional display text override for the instruction.
    * When set, UI should display this instead of raw instruction.
@@ -209,6 +226,9 @@ export interface AgentSessionOptionsConfig {
  * Cached management information from Claude SDK.
  */
 export interface AgentManagementInfo {
+  models?: Array<{ value: string; displayName: string; description: string }>;
+  commands?: Array<{ name: string; description: string; argumentHint: string }>;
+  account?: { email?: string; organization?: string; subscriptionType?: string };
   tools?: string[];
   agents?: string[];
   plugins?: Array<{ name: string; path?: string }>;
@@ -225,17 +245,26 @@ export interface AgentManagementInfo {
   lastUpdated?: string;
 }
 
+/** Structured preview metadata used by the session list for special message rendering. */
+export interface AgentSessionPreviewMeta {
+  displayText?: string;
+  clientMeta?: AgentActRequestClientMeta;
+  fullContent?: string;
+}
+
 /**
  * Agent session - represents an independent conversation within a project.
  */
 export interface AgentSession {
   id: string;
   projectId: string;
-  engineName: AgentCliPreference;
+  engineName: string;
   engineSessionId?: string;
   name?: string;
   /** Preview text from first user message, for display in session list */
   preview?: string;
+  /** Structured preview metadata for special rendering (for example web editor apply). */
+  previewMeta?: AgentSessionPreviewMeta;
   model?: string;
   permissionMode: string;
   allowDangerouslySkipPermissions: boolean;

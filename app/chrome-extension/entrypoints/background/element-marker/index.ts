@@ -166,27 +166,9 @@ export function initElementMarkerListeners() {
         case BACKGROUND_MESSAGE_TYPES.ELEMENT_MARKER_VALIDATE: {
           // Validate via MCP tool chain
           (async () => {
-            const req = message as {
-              selector: string;
-              selectorType?: 'css' | 'xpath';
-              action: MarkerValidationAction;
+            const req = message as MarkerValidationRequest & {
               listMode?: boolean;
-              text?: string;
-              keys?: string;
-              button?: 'left' | 'right' | 'middle';
-              bubbles?: boolean;
-              cancelable?: boolean;
-              modifiers?: any;
-              coordinates?: { x: number; y: number };
-              offsetX?: number;
-              offsetY?: number;
-              relativeTo?: 'element' | 'viewport';
             };
-            // enrich typing with optional nav + scroll params
-            (req as any).waitForNavigation = (message as any).waitForNavigation;
-            (req as any).timeoutMs = (message as any).timeoutMs;
-            (req as any).scrollDirection = (message as any).scrollDirection;
-            (req as any).scrollAmount = (message as any).scrollAmount;
             const selector = String(req.selector || '').trim();
             const selectorType = (req.selectorType || 'css') as 'css' | 'xpath';
             const action = req.action as MarkerValidationAction;

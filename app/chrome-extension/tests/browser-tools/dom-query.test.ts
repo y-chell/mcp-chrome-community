@@ -15,6 +15,10 @@ function parseJsonResult(result: { content?: Array<{ type: string; text?: string
   return JSON.parse(String(text || '{}'));
 }
 
+function getTextResult(result: { content?: Array<{ type: string; text?: string }> }): string {
+  return result.content?.find((item) => item.type === 'text')?.text ?? '';
+}
+
 describe('dom query tools', () => {
   const tabId = 21;
 
@@ -45,26 +49,28 @@ describe('dom query tools', () => {
 
   it('queries elements across frames and remembers returned refs', async () => {
     vi.spyOn(queryElementsTool as any, 'injectContentScript').mockResolvedValue(undefined);
-    vi.spyOn(queryElementsTool as any, 'sendMessageToTab').mockImplementation(
-      async (_tabId: number, _message: any, frameId?: number) => {
-        if (frameId === 0) {
-          return {
-            success: true,
-            elements: [{ ref: 'ref_top', tagName: 'button', text: 'Save' }],
-            refMap: [{ ref: 'ref_top' }],
-            totalMatches: 1,
-            truncated: false,
-          };
-        }
+    vi.spyOn(queryElementsTool as any, 'sendMessageToTab').mockImplementation((async (
+      _tabId: number,
+      _message: any,
+      frameId?: number,
+    ) => {
+      if (frameId === 0) {
         return {
           success: true,
-          elements: [{ ref: 'ref_child', tagName: 'input', text: 'Email' }],
-          refMap: [{ ref: 'ref_child' }],
+          elements: [{ ref: 'ref_top', tagName: 'button', text: 'Save' }],
+          refMap: [{ ref: 'ref_top' }],
           totalMatches: 1,
           truncated: false,
         };
-      },
-    );
+      }
+      return {
+        success: true,
+        elements: [{ ref: 'ref_child', tagName: 'input', text: 'Email' }],
+        refMap: [{ ref: 'ref_child' }],
+        totalMatches: 1,
+        truncated: false,
+      };
+    }) as any);
 
     const result = await queryElementsTool.execute({
       tabId,
@@ -106,7 +112,7 @@ describe('dom query tools', () => {
     } as any);
 
     expect(result.isError).toBe(true);
-    expect(result.content?.[0]?.text).toContain('Unknown ref "ref_missing"');
+    expect(getTextResult(result)).toContain('Unknown ref "ref_missing"');
   });
 
   it('routes get_element_html by ref to the remembered frame', async () => {
@@ -166,19 +172,21 @@ describe('dom query tools', () => {
 
   it('fails clearly when a selector matches multiple frames', async () => {
     vi.spyOn(getElementHtmlTool as any, 'injectContentScript').mockResolvedValue(undefined);
-    vi.spyOn(getElementHtmlTool as any, 'sendMessageToTab').mockImplementation(
-      async (_tabId: number, _message: any, frameId?: number) => ({
-        success: true,
-        element: {
-          ref: `ref_${frameId}`,
-          tagName: 'button',
-          html: '<button>Pay</button>',
-          htmlLength: 20,
-          truncated: false,
-        },
-        refMap: [{ ref: `ref_${frameId}` }],
-      }),
-    );
+    vi.spyOn(getElementHtmlTool as any, 'sendMessageToTab').mockImplementation((async (
+      _tabId: number,
+      _message: any,
+      frameId?: number,
+    ) => ({
+      success: true,
+      element: {
+        ref: `ref_${frameId}`,
+        tagName: 'button',
+        html: '<button>Pay</button>',
+        htmlLength: 20,
+        truncated: false,
+      },
+      refMap: [{ ref: `ref_${frameId}` }],
+    })) as any);
 
     const result = await getElementHtmlTool.execute({
       tabId,
@@ -186,6 +194,6 @@ describe('dom query tools', () => {
     } as any);
 
     expect(result.isError).toBe(true);
-    expect(result.content?.[0]?.text).toContain('matched multiple elements across frames');
+    expect(getTextResult(result)).toContain('matched multiple elements across frames');
   });
 });

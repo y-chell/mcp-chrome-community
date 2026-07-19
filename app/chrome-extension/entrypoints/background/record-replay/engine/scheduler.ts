@@ -31,6 +31,19 @@ import {
 import { createExecutor, type StepExecutorInterface } from './runners/step-executor';
 import { createReplayActionRegistry } from '../actions/handlers';
 
+function getTextContent(
+  result: { content?: readonly unknown[] } | null | undefined,
+): string | undefined {
+  const item = result?.content?.find(
+    (content): content is { type: 'text'; text: string } =>
+      typeof content === 'object' &&
+      content !== null &&
+      (content as { type?: unknown }).type === 'text' &&
+      typeof (content as { text?: unknown }).text === 'string',
+  );
+  return item?.text;
+}
+
 export interface RunOptions {
   tabTarget?: 'current' | 'new';
   refresh?: boolean;
@@ -294,7 +307,7 @@ class ExecutionOrchestrator {
         });
         let values: Record<string, any> | null = null;
         try {
-          const t = (res?.content || []).find((c: any) => c.type === 'text')?.text;
+          const t = getTextContent(res);
           const j = t ? JSON.parse(t) : null;
           if (j && j.success && j.values) values = j.values;
         } catch {
@@ -376,7 +389,7 @@ class ExecutionOrchestrator {
         });
         let started = false;
         try {
-          const t = res?.content?.find?.((c: any) => c.type === 'text')?.text;
+          const t = getTextContent(res);
           if (t) {
             const j = JSON.parse(t);
             started = !!j?.success;
@@ -767,7 +780,7 @@ class ExecutionOrchestrator {
           name: TOOL_NAMES.BROWSER.NETWORK_DEBUGGER_STOP,
           args: {},
         });
-        const text = (stopRes?.content || []).find((c: any) => c.type === 'text')?.text;
+        const text = getTextContent(stopRes);
         if (text) {
           try {
             const data = JSON.parse(text);

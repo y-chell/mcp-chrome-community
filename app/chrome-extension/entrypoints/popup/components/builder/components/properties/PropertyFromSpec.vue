@@ -1,5 +1,5 @@
 <template>
-  <PropertyFormRenderer v-if="node && hasSpec" :node="node" :variables="variables" />
+  <PropertyFormRenderer v-if="node && hasSpec" :node="node" :variables="normalizedVariables" />
   <div v-else class="form-section">
     <div class="section-title">未找到节点规范</div>
     <div class="help">该节点尚未提供 NodeSpec，已回退到默认属性面板。</div>
@@ -11,12 +11,19 @@
 import { computed } from 'vue';
 import PropertyFormRenderer from './PropertyFormRenderer.vue';
 import { getNodeSpec } from '@/entrypoints/popup/components/builder/model/node-spec-registry';
+import type { VariableOption } from '@/entrypoints/popup/components/builder/model/variables';
 
 const props = defineProps<{
   node: any;
   variables?: Array<{ key: string; origin?: string; nodeId?: string; nodeName?: string }>;
 }>();
 const hasSpec = computed(() => !!getNodeSpec(props.node?.type));
+const normalizedVariables = computed<VariableOption[]>(() =>
+  (props.variables || []).map((variable) => ({
+    ...variable,
+    origin: variable.origin === 'node' ? 'node' : 'global',
+  })),
+);
 </script>
 
 <style scoped>

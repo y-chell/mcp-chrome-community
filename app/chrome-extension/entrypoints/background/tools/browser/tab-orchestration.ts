@@ -30,6 +30,11 @@ interface FrameRuntimeDetails {
   hasInteractiveElements?: boolean;
 }
 
+type FrameDescriptor = Pick<
+  chrome.webNavigation.GetAllFrameResultDetails,
+  'frameId' | 'parentFrameId' | 'url'
+>;
+
 function matchValue(observed: string, expected: string, mode: MatchMode): boolean {
   switch (mode) {
     case 'equals':
@@ -74,10 +79,13 @@ class ListFramesTool extends BaseBrowserToolExecutor {
       const tab = explicit || (await this.getActiveTabOrThrowInWindow(args?.windowId));
       if (!tab.id) return createErrorResponse('Active tab has no ID');
 
-      let frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id }).catch(() => []);
-      if (!Array.isArray(frames) || frames.length === 0) {
-        frames = [{ frameId: 0, parentFrameId: -1, url: tab.url || '' }] as any;
-      }
+      const queriedFrames = await chrome.webNavigation
+        .getAllFrames({ tabId: tab.id })
+        .catch(() => null);
+      const frames: FrameDescriptor[] =
+        Array.isArray(queriedFrames) && queriedFrames.length > 0
+          ? queriedFrames
+          : [{ frameId: 0, parentFrameId: -1, url: tab.url || '' }];
 
       const includeDetails = args?.includeDetails !== false;
       const detailsByFrame = new Map<number, FrameRuntimeDetails>();

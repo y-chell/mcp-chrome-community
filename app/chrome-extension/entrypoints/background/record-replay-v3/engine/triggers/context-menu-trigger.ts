@@ -11,7 +11,7 @@
  */
 
 import type { TriggerId } from '../../domain/ids';
-import type { TriggerSpecByKind } from '../../domain/triggers';
+import type { ContextMenuContext, TriggerSpecByKind } from '../../domain/triggers';
 import type { TriggerFireCallback, TriggerHandler, TriggerHandlerFactory } from './trigger-handler';
 
 // ==================== Types ====================
@@ -32,7 +32,9 @@ interface InstalledContextMenuTrigger {
 const MENU_ITEM_PREFIX = 'rr_v3_';
 
 // Default context types if not specified
-const DEFAULT_CONTEXTS: chrome.contextMenus.ContextType[] = ['page'];
+type ChromeContextMenuContexts = NonNullable<chrome.contextMenus.CreateProperties['contexts']>;
+
+const DEFAULT_CONTEXTS: ChromeContextMenuContexts = ['page'];
 
 // ==================== Handler Implementation ====================
 
@@ -119,12 +121,12 @@ export function createContextMenuTriggerHandler(
    * Convert context types from spec to chrome API format
    */
   function normalizeContexts(
-    contexts: ReadonlyArray<string> | undefined,
-  ): chrome.contextMenus.ContextType[] {
+    contexts: ReadonlyArray<ContextMenuContext> | undefined,
+  ): ChromeContextMenuContexts {
     if (!contexts || contexts.length === 0) {
       return DEFAULT_CONTEXTS;
     }
-    return contexts as chrome.contextMenus.ContextType[];
+    return [contexts[0], ...contexts.slice(1)];
   }
 
   return {

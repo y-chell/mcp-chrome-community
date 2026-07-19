@@ -17,6 +17,21 @@ export type TriggerKind =
   | 'contextMenu'
   | 'dom';
 
+export type ContextMenuContext =
+  | 'action'
+  | 'audio'
+  | 'link'
+  | 'image'
+  | 'all'
+  | 'video'
+  | 'frame'
+  | 'selection'
+  | 'page'
+  | 'editable'
+  | 'launcher'
+  | 'browser_action'
+  | 'page_action';
+
 /**
  * 触发器基础接口
  */
@@ -85,7 +100,7 @@ export type TriggerSpec =
   | (TriggerSpecBase & {
       kind: 'contextMenu';
       title: string;
-      contexts?: ReadonlyArray<string>;
+      contexts?: ReadonlyArray<ContextMenuContext>;
     })
 
   // DOM 元素出现触发

@@ -189,7 +189,7 @@ function sleep(ms: number): Promise<void> {
  * 创建测试用 Node 定义
  * @description 一个简单的测试节点，支持成功/失败/延迟
  */
-function createTestNodeDefinition(): NodeDefinition<'test', TestNodeConfig> {
+function createTestNodeDefinition(): NodeDefinition<'test', JsonObject> {
   return {
     kind: 'test',
     schema: z
@@ -198,7 +198,7 @@ function createTestNodeDefinition(): NodeDefinition<'test', TestNodeConfig> {
         outputs: z.record(z.any()).optional(),
         delayMs: z.number().optional(),
       })
-      .passthrough() as z.ZodType<TestNodeConfig>,
+      .passthrough() as z.ZodType<JsonObject>,
     execute: async (_ctx, node): Promise<NodeExecutionResult> => {
       const cfg = node.config as unknown as TestNodeConfig;
 

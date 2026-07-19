@@ -140,13 +140,13 @@ function isGifMessage(message: unknown): message is GifMessage {
   const msg = message as Record<string, unknown>;
   if (msg.target !== MessageTarget.Offscreen) return false;
 
-  const gifTypes = [
+  const gifTypes = new Set<string>([
     OFFSCREEN_MESSAGE_TYPES.GIF_ADD_FRAME,
     OFFSCREEN_MESSAGE_TYPES.GIF_FINISH,
     OFFSCREEN_MESSAGE_TYPES.GIF_RESET,
-  ];
+  ]);
 
-  return gifTypes.includes(msg.type as string);
+  return typeof msg.type === 'string' && gifTypes.has(msg.type);
 }
 
 export function handleGifMessage(

@@ -63,9 +63,9 @@ class HealthTool extends BaseBrowserToolExecutor {
     const windows = await chrome.windows.getAll({ populate: true }).catch(() => []);
     const tabs = windows.flatMap((window) => window.tabs || []);
     const activeTab = tabs.find((tab) => tab.active);
-    const storage = await chrome.storage.local
+    const storage: Record<string, unknown> = await chrome.storage.local
       .get([STORAGE_KEYS.SERVER_STATUS, STORAGE_KEYS.NATIVE_AUTO_CONNECT_ENABLED])
-      .catch(() => ({}));
+      .catch((): Record<string, unknown> => ({}));
 
     return jsonSuccess({
       success: true,

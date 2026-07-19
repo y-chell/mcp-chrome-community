@@ -510,7 +510,7 @@ async function stopRecording(): Promise<GifResult> {
         createdAt: Date.now(),
       };
 
-      const blob = new Blob([gifBytes], { type: 'image/gif' });
+      const blob = createGifBlob(gifBytes);
       const dataUrl = await blobToDataUrl(blob);
 
       // Save GIF file
@@ -591,6 +591,13 @@ function getRecordingStatus(): GifResult {
 // ============================================================================
 // Utilities
 // ============================================================================
+
+function createGifBlob(data: Uint8Array): Blob {
+  // Copy into an ArrayBuffer-backed view for DOM BlobPart compatibility.
+  const bytes = new Uint8Array(data.byteLength);
+  bytes.set(data);
+  return new Blob([bytes.buffer], { type: 'image/gif' });
+}
 
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -825,7 +832,7 @@ class GifRecorderTool extends BaseBrowserToolExecutor {
             };
 
             // Save GIF file
-            const blob = new Blob([stopResult.gifData], { type: 'image/gif' });
+            const blob = createGifBlob(stopResult.gifData);
             const dataUrl = await blobToDataUrl(blob);
 
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -980,7 +987,7 @@ class GifRecorderTool extends BaseBrowserToolExecutor {
 
           if (download) {
             // Download mode
-            const blob = new Blob([lastRecordedGif.gifData], { type: 'image/gif' });
+            const blob = createGifBlob(lastRecordedGif.gifData);
             const dataUrl = await blobToDataUrl(blob);
 
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');

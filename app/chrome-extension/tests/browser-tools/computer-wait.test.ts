@@ -11,6 +11,10 @@ function parseJsonResult(result: { content?: Array<{ type: string; text?: string
   return JSON.parse(String(text || '{}'));
 }
 
+function getTextResult(result: { content?: Array<{ type: string; text?: string }> }): string {
+  return result.content?.find((item) => item.type === 'text')?.text ?? '';
+}
+
 describe('computer wait enhancements', () => {
   const tabId = 77;
 
@@ -162,7 +166,9 @@ describe('computer wait enhancements', () => {
       filenameContains: 'report',
       waitForComplete: true,
       timeoutMs: 2000,
-      reportProgress: vi.fn(async (update) => progress.push(update.progress)),
+      reportProgress: vi.fn(async (update) => {
+        progress.push(update.progress);
+      }),
     });
     const onCreated = (chrome.downloads.onCreated.addListener as any).mock.calls[0][0];
     const onChanged = (chrome.downloads.onChanged.addListener as any).mock.calls[0][0];
@@ -248,6 +254,7 @@ describe('computer wait enhancements', () => {
       .spyOn(networkCaptureStartTool, 'stopCapture')
       .mockImplementation(async (targetTabId) => {
         networkCaptureStartTool.captureData.delete(targetTabId);
+        return { success: true };
       });
     const controller = new AbortController();
     const pending = waitForCapturedRequest({
@@ -271,18 +278,20 @@ describe('computer wait enhancements', () => {
     const injectSpy = vi
       .spyOn(computerTool as any, 'injectContentScript')
       .mockResolvedValue(undefined);
-    const sendSpy = vi
-      .spyOn(computerTool as any, 'sendMessageToTab')
-      .mockImplementation(async (_tabId: number, _message: any, frameId?: number) => {
-        if (frameId === 0) {
-          return { success: false, reason: 'timeout' };
-        }
-        return {
-          success: true,
-          matched: { ref: 'ref_iframe', center: { x: 20, y: 30 } },
-          tookMs: 44,
-        };
-      });
+    const sendSpy = vi.spyOn(computerTool as any, 'sendMessageToTab').mockImplementation((async (
+      _tabId: number,
+      _message: any,
+      frameId?: number,
+    ) => {
+      if (frameId === 0) {
+        return { success: false, reason: 'timeout' };
+      }
+      return {
+        success: true,
+        matched: { ref: 'ref_iframe', center: { x: 20, y: 30 } },
+        tookMs: 44,
+      };
+    }) as any);
 
     const result = await computerTool.execute({
       action: 'wait',
@@ -321,14 +330,16 @@ describe('computer wait enhancements', () => {
 
   it('requires selector to be hidden in every frame when visible=false', async () => {
     vi.spyOn(computerTool as any, 'injectContentScript').mockResolvedValue(undefined);
-    vi.spyOn(computerTool as any, 'sendMessageToTab').mockImplementation(
-      async (_tabId: number, _message: any, frameId?: number) => {
-        if (frameId === 0) {
-          return { success: true, matched: null, tookMs: 12 };
-        }
-        return { success: false, reason: 'timeout' };
-      },
-    );
+    vi.spyOn(computerTool as any, 'sendMessageToTab').mockImplementation((async (
+      _tabId: number,
+      _message: any,
+      frameId?: number,
+    ) => {
+      if (frameId === 0) {
+        return { success: true, matched: null, tookMs: 12 };
+      }
+      return { success: false, reason: 'timeout' };
+    }) as any);
 
     const result = await computerTool.execute({
       action: 'wait',
@@ -339,6 +350,6 @@ describe('computer wait enhancements', () => {
     } as any);
 
     expect(result.isError).toBe(true);
-    expect(result.content?.[0]?.text).toContain('timed out');
+    expect(getTextResult(result)).toContain('timed out');
   });
 });

@@ -66,12 +66,12 @@ function createMockV3Context(overrides: Partial<NodeExecutionContext> = {}): Nod
 function createMockNode(id = 'node-1', config: Record<string, unknown> = {}) {
   return {
     id: id as NodeId,
-    kind: 'test' as const,
+    kind: 'extract' as const,
     config,
   };
 }
 
-type TestActionType = 'test';
+type TestActionType = 'extract';
 
 function createMockHandler(
   runFn: (
@@ -80,9 +80,23 @@ function createMockHandler(
   ) => Promise<ActionExecutionResult<TestActionType>>,
 ): ActionHandler<TestActionType> {
   return {
-    type: 'test' as TestActionType,
+    type: 'extract' as TestActionType,
     run: runFn,
   };
+}
+
+function expectSucceeded(
+  result: NodeExecutionResult,
+): asserts result is Extract<NodeExecutionResult, { status: 'succeeded' }> {
+  expect(result.status).toBe('succeeded');
+  if (result.status !== 'succeeded') throw new Error('Expected a succeeded result');
+}
+
+function expectFailed(
+  result: NodeExecutionResult,
+): asserts result is Extract<NodeExecutionResult, { status: 'failed' }> {
+  expect(result.status).toBe('failed');
+  if (result.status !== 'failed') throw new Error('Expected a failed result');
 }
 
 // ==================== Tests ====================
@@ -115,9 +129,9 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('failed');
-      expect(result.error?.code).toBe(RR_ERROR_CODES.TIMEOUT);
-      expect(result.error?.message).toBe('Timed out');
+      expectFailed(result);
+      expect(result.error.code).toBe(RR_ERROR_CODES.TIMEOUT);
+      expect(result.error.message).toBe('Timed out');
     });
 
     it('handles V2 handler throwing exception', async () => {
@@ -131,9 +145,9 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('failed');
-      expect(result.error?.code).toBe(RR_ERROR_CODES.INTERNAL);
-      expect(result.error?.message).toContain('Unexpected error');
+      expectFailed(result);
+      expect(result.error.code).toBe(RR_ERROR_CODES.INTERNAL);
+      expect(result.error.message).toContain('Unexpected error');
     });
   });
 
@@ -150,7 +164,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.varsPatch).toContainEqual({ op: 'set', name: 'newVar', value: 'value' });
     });
 
@@ -166,7 +180,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.varsPatch).toContainEqual({ op: 'set', name: 'existing', value: 'modified' });
     });
 
@@ -182,7 +196,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.varsPatch).toContainEqual({ op: 'delete', name: 'toDelete' });
     });
 
@@ -198,7 +212,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.varsPatch).toContainEqual({
         op: 'set',
         name: 'obj',
@@ -217,7 +231,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.varsPatch).toBeUndefined();
     });
   });
@@ -235,7 +249,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.next).toEqual({ kind: 'edgeLabel', label: 'true' });
     });
 
@@ -250,7 +264,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.next).toBeUndefined();
     });
   });
@@ -284,8 +298,8 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
         const result = await nodeDef.execute(ctx, node as any);
 
-        expect(result.status).toBe('failed');
-        expect(result.error?.code).toBe(v3Code);
+        expectFailed(result);
+        expect(result.error.code).toBe(v3Code);
       });
     });
   });
@@ -303,7 +317,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.varsPatch).toContainEqual({
         op: 'set',
         name: '__rr_v2__tabId',
@@ -323,7 +337,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.varsPatch).toContainEqual({
         op: 'set',
         name: '__rr_v2__frameId',
@@ -382,6 +396,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
+      expectSucceeded(result);
       expect(result.varsPatch).toContainEqual({
         op: 'set',
         name: 'custom_tab',
@@ -402,8 +417,8 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('failed');
-      expect(result.error?.code).toBe(RR_ERROR_CODES.RUN_PAUSED);
+      expectFailed(result);
+      expect(result.error.code).toBe(RR_ERROR_CODES.RUN_PAUSED);
     });
 
     it('returns failed for control directive (foreach)', async () => {
@@ -423,9 +438,9 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('failed');
-      expect(result.error?.code).toBe(RR_ERROR_CODES.UNSUPPORTED_NODE);
-      expect(result.error?.message).toContain('foreach');
+      expectFailed(result);
+      expect(result.error.code).toBe(RR_ERROR_CODES.UNSUPPORTED_NODE);
+      expect(result.error.message).toContain('foreach');
     });
 
     it('returns failed for control directive (while)', async () => {
@@ -433,7 +448,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
         status: 'success',
         control: {
           kind: 'while' as const,
-          condition: { left: 'a', op: '==', right: 'b' },
+          condition: { kind: 'compare', left: 'a', op: 'eq', right: 'b' },
           subflowId: 'subflow-1',
           maxIterations: 10,
         },
@@ -445,9 +460,9 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('failed');
-      expect(result.error?.code).toBe(RR_ERROR_CODES.UNSUPPORTED_NODE);
-      expect(result.error?.message).toContain('while');
+      expectFailed(result);
+      expect(result.error.code).toBe(RR_ERROR_CODES.UNSUPPORTED_NODE);
+      expect(result.error.message).toContain('while');
     });
   });
 
@@ -455,7 +470,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
     it('captures output in outputs map', async () => {
       const handler = createMockHandler(async () => ({
         status: 'success',
-        output: { extracted: 'data' },
+        output: { value: 'data' },
       }));
 
       const nodeDef = adaptV2ActionHandlerToV3NodeDefinition(handler);
@@ -464,16 +479,16 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.outputs).toEqual({
-        'extract-node': { extracted: 'data' },
+        'extract-node': { value: 'data' },
       });
     });
 
     it('respects includeOutput: false option', async () => {
       const handler = createMockHandler(async () => ({
         status: 'success',
-        output: { extracted: 'data' },
+        output: { value: 'data' },
       }));
 
       const nodeDef = adaptV2ActionHandlerToV3NodeDefinition(handler, {
@@ -484,7 +499,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.outputs).toBeUndefined();
     });
 
@@ -499,7 +514,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('succeeded');
+      expectSucceeded(result);
       expect(result.outputs).toBeUndefined();
     });
   });
@@ -507,7 +522,7 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
   describe('Validation', () => {
     it('calls handler validate and returns error on failure', async () => {
       const handler: ActionHandler<TestActionType> = {
-        type: 'test' as TestActionType,
+        type: 'extract' as TestActionType,
         validate: () => ({ ok: false, errors: ['Invalid config'] }),
         run: async () => ({ status: 'success' }),
       };
@@ -518,14 +533,14 @@ describe('adaptV2ActionHandlerToV3NodeDefinition', () => {
 
       const result = await nodeDef.execute(ctx, node as any);
 
-      expect(result.status).toBe('failed');
-      expect(result.error?.code).toBe(RR_ERROR_CODES.VALIDATION_ERROR);
-      expect(result.error?.message).toContain('Invalid config');
+      expectFailed(result);
+      expect(result.error.code).toBe(RR_ERROR_CODES.VALIDATION_ERROR);
+      expect(result.error.message).toContain('Invalid config');
     });
 
     it('proceeds with execution when validation passes', async () => {
       const handler: ActionHandler<TestActionType> = {
-        type: 'test' as TestActionType,
+        type: 'extract' as TestActionType,
         validate: () => ({ ok: true }),
         run: async () => ({ status: 'success' }),
       };

@@ -97,7 +97,16 @@ HTTP/SSE 传输的鉴权、Origin/Host 校验、会话生命周期和限流单�
 - [x] 校验会话初始化、关闭、断线清理和重连行为。
 - [x] 移除不安全的默认执行参数，改为显式配置。
 
-### 第四阶段：扩展端原生结构化结果
+### 第四阶段：扩展端类型基线清理
+
+- [x] 统一 Agent 在 Shared、Native Server 和 Extension 中的公共类型。
+- [x] 对齐 Element Marker 参数 Schema 与实际实现。
+- [x] 修复浏览器工具、Chrome API 和 Worker 的严格空值及 overload 类型问题。
+- [x] 收敛 Record/Replay V2/V3 的生产契约、适配器和测试 fixture。
+- [x] 清理 Web Editor、表单组件和 Selector 的剩余类型错误。
+- [x] 将扩展 `vue-tsc --noEmit` 从 168 个历史错误降为 0，并加入 CI 门禁。
+
+### 第五阶段：扩展端原生结构化结果
 
 - [ ] 按工具族定义稳定的 `outputSchema`。
 - [ ] 扩展端直接返回结构化对象，减少 Native Server 猜测 JSON 文本。
@@ -248,3 +257,73 @@ Tasks API 已完成 SDK 1.29 级别的可用性评估，但没有进行对外试
 ### 本阶段边界
 
 本阶段没有实现 Agent API 全局鉴权，也没有把内置 HTTP 监听器升级成 TLS 服务；这两项分别留给后续 API 安全和部署边界专项。MCP Tasks 仍保持暂缓，不因本阶段的会话注册表而对外暴露任务接口。
+
+## 2026-07-18 扩展端类型基线清理计划
+
+第三阶段结束时，扩展生产构建和 725 个 Vitest 测试均通过，但独立执行 `vue-tsc --noEmit --pretty false` 仍会产生 168 个历史类型错误。这些错误分布在 38 个文件中，其中测试代码 110 个错误、14 个文件，扩展正式代码及共享代码 58 个错误、24 个文件。当前错误不是本轮 MCP 安全改造引入，但会掩盖后续协议和结构化结果改造产生的新类型回归，因此必须在原第四阶段之前先建立零错误基线。
+
+### 当前错误分布
+
+| 模块                    | 错误数 | 主要问题                                                                           |
+| ----------------------- | -----: | ---------------------------------------------------------------------------------- |
+| Record/Replay 类型契约  |     95 | V2/V3 生产接口已经演进，适配器、测试 fixture 和断言仍引用旧字段或无效泛型参数      |
+| 浏览器工具与 Chrome API |     34 | `undefined`、`null`、Chrome API overload 和异步返回值没有满足严格类型约束          |
+| Web Editor 与表单组件   |     14 | Vue props、事件类型和递归返回类型不同步                                            |
+| Agent 共享类型          |     12 | Native Server 已使用 `previewMeta` 等字段，但 Shared 和 Extension 的公共声明未同步 |
+| Element Marker          |      9 | 实现读取 `waitForNavigation`、`timeoutMs`，参数 Schema 却未声明                    |
+| Offscreen Worker        |      2 | Worker/Web API 类型不匹配                                                          |
+| Selector                |      2 | 严格空值检查未处理                                                                 |
+
+错误码以属性和契约不一致为主：`TS2339` 64 个、`TS2322` 32 个、`TS2345` 32 个，其他错误 40 个。
+
+### 实施顺序
+
+1. **公共类型先行**：统一 `AgentSession`、请求元数据和预览元数据等 Shared 类型，删除 Native Server 与 Extension 中不必要的重复声明，先解决 12 个 Agent 类型错误。
+2. **小范围 Schema 对齐**：核实 Element Marker 的真实工具契约。仍受支持的参数补入 Schema、共享类型和测试；已废弃的参数从实现中移除，解决 9 个错误。
+3. **浏览器 API 严格类型**：按工具逐个处理可空值、tab/frame 标识符、Chrome API overload 和网络抓包返回类型，解决 34 个错误，并保留现有错误分支。
+4. **Record/Replay 专项**：先确定 V3 当前生产契约，再同步 V2 适配器和测试 fixture；不通过 `any` 或扩大联合类型来迁就失效测试，集中解决 95 个错误。
+5. **界面与剩余模块**：处理 Web Editor、Vue 表单递归类型、Offscreen Worker 和 Selector 的剩余 18 个错误。
+6. **建立持续门禁**：类型错误清零后，将扩展 `compile` 命令加入根级验证和 CI。若拆分应用与测试 `tsconfig`，两套检查必须都通过，不能通过排除 `tests/` 隐藏错误。
+
+### 修改原则
+
+- 以实际运行契约、当前 Schema 和调用链为依据，先修正类型源头，再修改调用方和测试。
+- 不使用大范围 `any`、双重类型断言、`@ts-ignore` 或关闭 `strict` 来制造表面通过。
+- 测试中的错误同样需要修复；可以拆分检查任务，但不能把测试目录移出类型检查范围。
+- 每个模块单独提交和验证，避免把 Record/Replay 的大批契约改动与 Agent、浏览器工具等独立修复混在一个提交中。
+- 必须改变运行行为时，先补充能证明旧行为和新行为差异的测试，并在本计划的实施结果中记录。
+
+### 验收标准
+
+- 扩展 `vue-tsc --noEmit --pretty false` 返回 0，类型诊断为 0。
+- Extension Vitest 全量测试通过，且不能减少现有有效测试覆盖来换取通过。
+- Chrome MV3 生产构建通过，清单版本、入口脚本、页面和图标引用完整。
+- Shared package 构建和 Native Server `tsc --noEmit` 继续通过，避免公共类型修复造成跨工作区回归。
+- CI 或根级验证脚本明确执行扩展类型检查，后续新增类型错误直接阻止合并。
+
+## 2026-07-19 第四阶段实施结果
+
+### 完成内容
+
+- Shared 补齐 `AgentActRequestClientMeta`、附件消息元数据、会话预览元数据和管理信息字段；Native Server 的会话服务改为复用 Shared 公共类型，删除重复声明。
+- Element Marker 直接复用 `MarkerValidationRequest`，不再通过局部接口和 `any` 重复补齐导航、超时和滚动参数。
+- 修复浏览器工具、Chrome API、Offscreen Worker、GIF 编码和 Selector 的空值、异步返回值、DOM `BlobPart` 与 overload 类型问题。
+- 以当前 V3 领域模型为准同步 Record/Replay V2 导入适配器、触发器契约、旧版执行器和测试 fixture；测试目录继续包含在扩展类型检查中。
+- 修复 Web Editor 属性面板、Vue 表单递归组件、Agent 附件缓存面板和相关测试的 props、联合类型及事件参数错误。
+- 根级 `typecheck` 改为显式检查 Shared、Native Server 和 Extension，避免递归进入没有 `tsconfig.json` 的 WASM 包；新增 `.github/workflows/extension-typecheck.yml`，在 Pull Request 以及 `main`、`master` 推送时执行扩展类型门禁。
+
+### 契约与行为说明
+
+- Agent 会话的 `engineName` 保持可扩展字符串，创建请求仍使用受限的 `AgentCliPreference`；这保留了数据库已有会话和后续引擎扩展的兼容性。
+- V2 到 V3 的命令触发器改为写入当前契约字段 `commandKey`，URL 触发器改为保留 `kind` 与 `value` 的完整匹配项，不再生成 V3 不识别的旧字段。
+- Context Menu 触发器的 `contexts` 收敛为 Chrome 实际支持的上下文联合类型，默认值仍为 `page`，安装和点击行为不变。
+- Chrome API 返回缺失对象时现在产生明确错误；正常路径、工具名称、入参和既有文本结果未改变。
+
+### 验收结果
+
+- 根级 `pnpm typecheck` 通过；扩展 `vue-tsc --noEmit --pretty false` 从 168 个历史诊断降为 0。
+- Chrome 扩展 57 个测试文件、725 个测试全部通过。
+- Native Server 11 个测试文件、91 个测试全部通过。
+- `chrome-mcp-shared` 构建和 Native Server `tsc --noEmit` 通过。
+- Chrome MV3 扩展 `1.0.11` 生产构建通过；清单版本为 3，清单版本号为 `1.0.11`，后台脚本、页面、内容脚本和图标共 12 个具体引用全部存在。
+- 根级类型检查脚本和 GitHub Actions 均显式执行扩展 `vue-tsc`，后续新增类型错误会直接导致验证失败。
