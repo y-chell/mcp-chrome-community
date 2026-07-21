@@ -22,3 +22,14 @@ export const createErrorResponse = (
     isError: true,
   };
 };
+
+export function createStructuredToolResult(
+  payload: object,
+  text = JSON.stringify(payload),
+): ToolResult {
+  return {
+    content: [{ type: 'text', text }],
+    structuredContent: payload as Record<string, unknown>,
+    isError: false,
+  };
+}

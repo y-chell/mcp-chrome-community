@@ -1,4 +1,8 @@
-import { createErrorResponse, type ToolResult } from '@/common/tool-handler';
+import {
+  createErrorResponse,
+  createStructuredToolResult,
+  type ToolResult,
+} from '@/common/tool-handler';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 import { cdpSessionManager } from '@/utils/cdp-session-manager';
@@ -156,10 +160,7 @@ function serializeError(error: unknown): { message: string } {
 
 abstract class CdpBaseTool extends BaseBrowserToolExecutor {
   protected createJsonSuccess(payload: Record<string, unknown>): ToolResult {
-    return {
-      content: [{ type: 'text', text: JSON.stringify(payload) }],
-      isError: false,
-    };
+    return createStructuredToolResult(payload);
   }
 
   protected async resolveTargetTab(args: { tabId?: number; windowId?: number }) {

@@ -1,4 +1,8 @@
-import { createErrorResponse, type ToolResult } from '@/common/tool-handler';
+import {
+  createErrorResponse,
+  createStructuredToolResult,
+  type ToolResult,
+} from '@/common/tool-handler';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 import { computerTool } from './computer';
@@ -208,10 +212,7 @@ function matchStringValue(
 
 abstract class WaitToolsBase extends BaseBrowserToolExecutor {
   protected createJsonSuccess(payload: Record<string, unknown>): ToolResult {
-    return {
-      content: [{ type: 'text', text: JSON.stringify(payload) }],
-      isError: false,
-    };
+    return createStructuredToolResult(payload);
   }
 
   protected async resolveTargetTab(args: WaitForParams): Promise<chrome.tabs.Tab> {

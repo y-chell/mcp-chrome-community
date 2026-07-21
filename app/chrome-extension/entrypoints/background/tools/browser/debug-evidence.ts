@@ -1,4 +1,4 @@
-import { createErrorResponse, ToolResult } from '@/common/tool-handler';
+import { createErrorResponse, createStructuredToolResult, ToolResult } from '@/common/tool-handler';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 import { consoleTool } from './console';
@@ -521,10 +521,7 @@ class CollectDebugEvidenceTool extends BaseBrowserToolExecutor {
   name = TOOL_NAMES.BROWSER.COLLECT_DEBUG_EVIDENCE;
 
   private createJsonSuccess(payload: Record<string, unknown>): ToolResult {
-    return {
-      content: [{ type: 'text', text: JSON.stringify(payload) }],
-      isError: false,
-    };
+    return createStructuredToolResult(payload);
   }
 
   private async collectScreenshot(

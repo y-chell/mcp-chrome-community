@@ -2,6 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import http, { type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { resolvePreferredNodeExecPath } from './utils';
 
 type JsonRpcMessage = {
@@ -285,6 +287,83 @@ function parseToolText(response: JsonRpcMessage): any {
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function verifyStructuredCompatibility(result: any, label: string) {
+  if (!isPlainObject(result?.structuredContent)) {
+    throw new Error(`${label} did not return structuredContent`);
+  }
+
+  const text = result?.content?.find?.((item: any) => item?.type === 'text')?.text;
+  if (typeof text !== 'string') {
+    throw new Error(`${label} did not preserve legacy text content`);
+  }
+
+  let legacyPayload: unknown;
+  try {
+    legacyPayload = JSON.parse(text);
+  } catch {
+    throw new Error(`${label} legacy text content is not JSON`);
+  }
+
+  if (JSON.stringify(legacyPayload) !== JSON.stringify(result.structuredContent)) {
+    throw new Error(`${label} text content and structuredContent differ`);
+  }
+
+  return {
+    legacyContent: true,
+    structuredContent: true,
+    contentMatchesStructured: true,
+  };
+}
+
+async function verifyModernSdkCompatibility(options: SmokeOptions) {
+  const nodeExecPath = resolvePreferredNodeExecPath(process.execPath);
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  );
+  env.CHROME_MCP_TOOL_PROFILE = options.profile;
+
+  const transport = new StdioClientTransport({
+    command: nodeExecPath,
+    args: [options.serverPath],
+    cwd: process.cwd(),
+    env,
+    stderr: 'pipe',
+  });
+  const client = new Client(
+    { name: 'mcp-chrome-community-sdk-compat-smoke', version: '0.0.0' },
+    { capabilities: {} },
+  );
+
+  try {
+    await client.connect(transport);
+    const listed = await client.listTools();
+    const healthTool = listed.tools.find((tool) => tool.name === 'chrome_health');
+    if (!healthTool?.outputSchema) {
+      throw new Error('Modern SDK tools/list did not expose chrome_health.outputSchema');
+    }
+
+    const result = await client.callTool({ name: 'chrome_health', arguments: {} });
+    if (result.isError) {
+      throw new Error(`Modern SDK chrome_health returned isError: ${JSON.stringify(result)}`);
+    }
+
+    return {
+      client: '@modelcontextprotocol/sdk',
+      outputSchemaAdvertised: true,
+      outputSchemaValidated: true,
+      ...verifyStructuredCompatibility(result, 'Modern SDK chrome_health'),
+    };
+  } finally {
+    await client.close().catch(() => undefined);
+  }
+}
+
 async function callMcpTool(
   client: StdioMcpClient,
   name: string,
@@ -438,8 +517,13 @@ function createFixtureServer(): Promise<{
 }
 
 async function closeServer(server: Server): Promise<void> {
-  await new Promise<void>((resolve) => {
-    server.close(() => resolve());
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+    // Chrome keeps fixture responses alive; force-close them after stopping new accepts.
+    server.closeAllConnections();
   });
 }
 
@@ -448,6 +532,7 @@ async function runRealBrowserSmoke(
   timeoutMs: number,
 ): Promise<Record<string, unknown>> {
   const { server, baseUrl } = await createFixtureServer();
+  logProgress(`real-browser fixture started at ${baseUrl}`);
   const openedTabIds = new Set<number>();
   let originalClipboard: string | null = null;
   let createdGroupId: number | null = null;
@@ -715,6 +800,7 @@ async function runRealBrowserSmoke(
       },
     };
   } finally {
+    logProgress('real-browser cleanup started');
     if (originalClipboard !== null) {
       await callMcpTool(
         client,
@@ -740,6 +826,7 @@ async function runRealBrowserSmoke(
       ).catch(() => undefined);
     }
     await closeServer(server);
+    logProgress('real-browser cleanup completed');
   }
 }
 
@@ -803,16 +890,20 @@ async function run() {
     }
 
     let health: any = null;
+    let compatibility: Record<string, unknown> | null = null;
     if (options.callHealth) {
-      health =
-        options.profile === 'full'
-          ? await callMcpTool(client, 'chrome_health', {}, options.timeoutMs)
-          : await callMcpTool(
-              client,
-              'chrome_call_tool',
-              { name: 'chrome_health', args: {} },
-              options.timeoutMs,
-            );
+      const directHealthResponse = await client.request(
+        'tools/call',
+        { name: 'chrome_health', arguments: {} },
+        options.timeoutMs,
+      );
+      assertNoRpcError(directHealthResponse, 'chrome_health');
+      if (directHealthResponse.result?.isError) {
+        throw new Error(
+          `chrome_health returned isError: ${JSON.stringify(directHealthResponse.result)}`,
+        );
+      }
+      health = parseToolText(directHealthResponse);
       if (!health?.success) {
         throw new Error(`chrome_health returned unexpected payload: ${JSON.stringify(health)}`);
       }
@@ -821,6 +912,16 @@ async function run() {
           `chrome_health reported unexpected STDIO profile: ${JSON.stringify(health.stdio)}`,
         );
       }
+      compatibility = {
+        legacyJsonRpc: {
+          protocolVersion: '2024-11-05',
+          ...verifyStructuredCompatibility(
+            directHealthResponse.result,
+            'Legacy JSON-RPC chrome_health',
+          ),
+        },
+        modernSdk: await verifyModernSdkCompatibility(options),
+      };
     }
 
     const realBrowser = options.realBrowser
@@ -838,6 +939,7 @@ async function run() {
             requiredTools: options.requiredTools,
             callHealth: options.callHealth,
             realBrowser: options.realBrowser,
+            compatibilityMatrix: compatibility !== null,
           },
           health: health
             ? {
@@ -853,6 +955,7 @@ async function run() {
               }
             : null,
           profileCatalog,
+          compatibility,
           realBrowser,
         },
         null,

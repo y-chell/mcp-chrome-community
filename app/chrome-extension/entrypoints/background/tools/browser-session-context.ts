@@ -276,7 +276,9 @@ async function prepareToolArgs(
   return { args };
 }
 
-function parseJsonPayload(result: ToolResult): Record<string, any> | null {
+function parseJsonPayload(result: ToolResult): Record<string, unknown> | null {
+  if (isPlainObject(result.structuredContent)) return result.structuredContent;
+
   for (const item of result.content || []) {
     if (item.type !== 'text') continue;
     const text = item.text?.trim();

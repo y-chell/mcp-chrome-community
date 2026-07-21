@@ -1,4 +1,8 @@
-import { createErrorResponse, type ToolResult } from '@/common/tool-handler';
+import {
+  createErrorResponse,
+  createStructuredToolResult,
+  type ToolResult,
+} from '@/common/tool-handler';
 import { ERROR_MESSAGES } from '@/common/constants';
 import { TOOL_MESSAGE_TYPES } from '@/common/message-types';
 import { rememberRefTargets } from '@/utils/ref-target-store';
@@ -42,10 +46,7 @@ class ScanCompactTool extends BaseBrowserToolExecutor {
   name = TOOL_NAMES.BROWSER.SCAN_COMPACT;
 
   private createJsonSuccess(payload: Record<string, unknown>): ToolResult {
-    return {
-      content: [{ type: 'text', text: JSON.stringify(payload) }],
-      isError: false,
-    };
+    return createStructuredToolResult(payload);
   }
 
   private clampInt(value: unknown, fallback: number, min: number, max: number): number {

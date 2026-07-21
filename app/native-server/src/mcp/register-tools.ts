@@ -34,6 +34,10 @@ type DynamicFlowRefreshResult =
 
 class InvalidDynamicFlowDirectoryResponseError extends Error {}
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 async function fetchDynamicFlowDirectory(): Promise<DynamicFlowDirectoryEntry[]> {
   const response = await nativeMessagingHostInstance.sendRequestToExtensionAndWait(
     {},
@@ -260,11 +264,17 @@ async function waitWithSignal<T>(promise: Promise<T>, signal?: AbortSignal): Pro
 
 function appendNativeHealthMetadata(result: CallToolResult, context: ToolCallContext) {
   if (result.isError) return result;
+
+  const basePayload = isPlainObject(result.structuredContent) ? result.structuredContent : null;
   const first = result.content?.[0];
-  if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
+  const firstText =
+    first && first.type === 'text' && typeof first.text === 'string' ? first : undefined;
+  if (!basePayload && !firstText) {
+    return result;
+  }
 
   try {
-    const parsed = JSON.parse(first.text);
+    const parsed = basePayload ?? (firstText ? JSON.parse(firstText.text) : null);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return result;
 
     const enriched = {
@@ -283,7 +293,7 @@ function appendNativeHealthMetadata(result: CallToolResult, context: ToolCallCon
       structuredContent: enriched,
       content: [
         {
-          ...first,
+          ...(firstText ?? { type: 'text' as const }),
           text: JSON.stringify(enriched),
         },
         ...(result.content || []).slice(1),
@@ -294,7 +304,9 @@ function appendNativeHealthMetadata(result: CallToolResult, context: ToolCallCon
   }
 }
 
-function appendStructuredContent(result: CallToolResult): CallToolResult {
+// Older extensions and dynamic flows may still return JSON only through text content.
+// New stable browser tools populate structuredContent in the extension itself.
+function appendLegacyStructuredContent(result: CallToolResult): CallToolResult {
   if (result.isError || result.structuredContent !== undefined) return result;
   const first = result.content?.[0];
   if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
@@ -360,7 +372,7 @@ const handleToolCall = async (
           120000,
           execution,
         );
-        if (proxyRes.status === 'success') return appendStructuredContent(proxyRes.data);
+        if (proxyRes.status === 'success') return appendLegacyStructuredContent(proxyRes.data);
         return {
           content: [{ type: 'text', text: `Error calling dynamic flow tool: ${proxyRes.error}` }],
           isError: true,
@@ -392,7 +404,7 @@ const handleToolCall = async (
       if (name === HEALTH_TOOL_NAME) {
         result = appendNativeHealthMetadata(result, context);
       }
-      return appendStructuredContent(result);
+      return appendLegacyStructuredContent(result);
     } else {
       return {
         content: [

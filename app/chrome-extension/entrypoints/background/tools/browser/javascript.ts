@@ -13,7 +13,7 @@
  * - Detailed error classification
  */
 
-import { createErrorResponse, ToolResult } from '@/common/tool-handler';
+import { createErrorResponse, createStructuredToolResult, ToolResult } from '@/common/tool-handler';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 import { cdpSessionManager } from '@/utils/cdp-session-manager';
@@ -527,10 +527,7 @@ class JavaScriptTool extends BaseBrowserToolExecutor {
       metrics: { elapsedMs: Math.round(performance.now() - startTime) },
     };
 
-    return {
-      content: [{ type: 'text', text: JSON.stringify(payload) }],
-      isError: false,
-    };
+    return createStructuredToolResult(payload);
   }
 
   private buildErrorResponse(

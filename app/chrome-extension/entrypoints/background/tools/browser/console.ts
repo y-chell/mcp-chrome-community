@@ -1,4 +1,4 @@
-import { createErrorResponse, ToolResult } from '@/common/tool-handler';
+import { createErrorResponse, createStructuredToolResult, ToolResult } from '@/common/tool-handler';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 import { cdpSessionManager } from '@/utils/cdp-session-manager';
@@ -275,10 +275,7 @@ class ConsoleTool extends BaseBrowserToolExecutor {
           droppedExceptionCount: read.droppedExceptionCount,
         };
 
-        return {
-          content: [{ type: 'text', text: JSON.stringify(result) }],
-          isError: false,
-        };
+        return createStructuredToolResult(result);
       }
 
       // Snapshot 模式（一次性捕获）
@@ -294,10 +291,7 @@ class ConsoleTool extends BaseBrowserToolExecutor {
         includeExceptions,
       });
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(filtered) }],
-        isError: false,
-      };
+      return createStructuredToolResult(filtered);
     } catch (error: unknown) {
       console.error('ConsoleTool: Critical error during execute:', error);
       const msg = error instanceof Error ? error.message : String(error);

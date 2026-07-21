@@ -65,6 +65,33 @@ const TOOL_SEARCH_ALIASES: Readonly<Record<string, readonly string[]>> = {
   [TOOL_NAMES.BROWSER.GIF_RECORDER]: ['录屏', '动图录制', 'GIF录制'],
 };
 
+const SEARCH_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    success: { type: 'boolean' },
+    profile: { type: 'string', enum: ['full', 'core', 'search'] },
+    query: { type: 'string' },
+    totalKnownTools: { type: 'number' },
+    resultCount: { type: 'number' },
+    results: { type: 'array' },
+    hint: { type: 'string' },
+  },
+  required: ['success', 'profile', 'query', 'totalKnownTools', 'resultCount', 'results', 'hint'],
+  additionalProperties: true,
+} satisfies NonNullable<Tool['outputSchema']>;
+
+const DESCRIBE_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    success: { type: 'boolean' },
+    profile: { type: 'string', enum: ['full', 'core', 'search'] },
+    exposed: { type: 'boolean' },
+    tool: { type: 'object' },
+  },
+  required: ['success', 'profile', 'exposed', 'tool'],
+  additionalProperties: true,
+} satisfies NonNullable<Tool['outputSchema']>;
+
 export const META_TOOL_SCHEMAS: Tool[] = [
   {
     name: META_TOOL_NAMES.SEARCH,
@@ -93,6 +120,7 @@ export const META_TOOL_SCHEMAS: Tool[] = [
       idempotentHint: true,
       openWorldHint: false,
     },
+    outputSchema: SEARCH_OUTPUT_SCHEMA,
   },
   {
     name: META_TOOL_NAMES.DESCRIBE,
@@ -115,6 +143,7 @@ export const META_TOOL_SCHEMAS: Tool[] = [
       idempotentHint: true,
       openWorldHint: false,
     },
+    outputSchema: DESCRIBE_OUTPUT_SCHEMA,
   },
   {
     name: META_TOOL_NAMES.CALL,

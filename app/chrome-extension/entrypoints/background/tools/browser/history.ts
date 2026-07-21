@@ -1,4 +1,4 @@
-import { createErrorResponse, ToolResult } from '@/common/tool-handler';
+import { createErrorResponse, createStructuredToolResult, ToolResult } from '@/common/tool-handler';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 import {
@@ -211,15 +211,7 @@ class HistoryTool extends BaseBrowserToolExecutor {
         result.query = text;
       }
 
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-        isError: false,
-      };
+      return createStructuredToolResult(result, JSON.stringify(result, null, 2));
     } catch (error) {
       console.error('Error in HistoryTool.execute:', error);
       return createErrorResponse(

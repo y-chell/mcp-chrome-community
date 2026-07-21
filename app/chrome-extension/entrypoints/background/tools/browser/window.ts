@@ -1,4 +1,4 @@
-import { createErrorResponse, ToolResult } from '@/common/tool-handler';
+import { createErrorResponse, createStructuredToolResult, ToolResult } from '@/common/tool-handler';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 
@@ -45,15 +45,7 @@ class WindowTool extends BaseBrowserToolExecutor {
         windows: structuredWindows,
       };
 
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(result),
-          },
-        ],
-        isError: false,
-      };
+      return createStructuredToolResult(result);
     } catch (error) {
       console.error('Error in WindowTool.execute:', error);
       return createErrorResponse(

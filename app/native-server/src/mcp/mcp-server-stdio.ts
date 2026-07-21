@@ -42,6 +42,10 @@ type ProxyCallExecution = {
   onProgress?: (progress: { progress: number; total?: number; message?: string }) => void;
 };
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 if (toolProfileResolution.invalidValue) {
   console.error(
     `Invalid CHROME_MCP_TOOL_PROFILE="${toolProfileResolution.invalidValue}"; using "full". Expected full, core, or search.`,
@@ -195,11 +199,14 @@ const appendStdioProfileMetadata = (
   profile: ChromeMcpToolProfile,
 ): CallToolResult => {
   if (result.isError) return result;
+  const basePayload = isPlainObject(result.structuredContent) ? result.structuredContent : null;
   const first = result.content?.[0];
-  if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
+  const firstText =
+    first && first.type === 'text' && typeof first.text === 'string' ? first : undefined;
+  if (!basePayload && !firstText) return result;
 
   try {
-    const parsed = JSON.parse(first.text);
+    const parsed = basePayload ?? (firstText ? JSON.parse(firstText.text) : null);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return result;
     const enriched = {
       ...parsed,
@@ -215,7 +222,7 @@ const appendStdioProfileMetadata = (
       structuredContent: enriched,
       content: [
         {
-          ...first,
+          ...(firstText ?? { type: 'text' as const }),
           text: JSON.stringify(enriched),
         },
         ...(result.content || []).slice(1),

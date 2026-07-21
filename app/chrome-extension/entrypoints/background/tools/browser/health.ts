@@ -1,5 +1,5 @@
 import { STORAGE_KEYS } from '@/common/constants';
-import { type ToolResult } from '@/common/tool-handler';
+import { createStructuredToolResult, type ToolResult } from '@/common/tool-handler';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_SCHEMAS } from 'chrome-mcp-shared';
 
@@ -16,10 +16,7 @@ const HEALTH_TOOL_SCHEMA = {
 };
 
 function jsonSuccess(payload: Record<string, unknown>): ToolResult {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(payload) }],
-    isError: false,
-  };
+  return createStructuredToolResult(payload);
 }
 
 function hashString(input: string): string {

@@ -2298,6 +2298,71 @@ const RAW_TOOL_SCHEMAS: Tool[] = [
   },
 ];
 
+const SUCCESS_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    success: { type: 'boolean' },
+  },
+  required: ['success'],
+  additionalProperties: true,
+} satisfies NonNullable<Tool['outputSchema']>;
+
+const HEALTH_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    success: { type: 'boolean' },
+    tool: { type: 'string' },
+    checkedAt: { type: 'number' },
+    extension: { type: 'object' },
+    schema: { type: 'object' },
+    browser: { type: 'object' },
+    nativeHost: { type: 'object' },
+  },
+  required: ['success', 'tool', 'checkedAt', 'extension', 'schema', 'browser', 'nativeHost'],
+  additionalProperties: true,
+} satisfies NonNullable<Tool['outputSchema']>;
+
+const BROWSER_INVENTORY_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    windowCount: { type: 'number' },
+    tabCount: { type: 'number' },
+    windows: { type: 'array' },
+  },
+  required: ['windowCount', 'tabCount', 'windows'],
+  additionalProperties: true,
+} satisfies NonNullable<Tool['outputSchema']>;
+
+const HISTORY_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: { type: 'array' },
+    totalCount: { type: 'number' },
+    timeRange: { type: 'object' },
+    query: { type: 'string' },
+  },
+  required: ['items', 'totalCount', 'timeRange'],
+  additionalProperties: true,
+} satisfies NonNullable<Tool['outputSchema']>;
+
+const SUCCESS_OUTPUT_TOOLS = new Set<string>([
+  TOOL_NAMES.BROWSER.LIST_FRAMES,
+  TOOL_NAMES.BROWSER.SCAN_COMPACT,
+  TOOL_NAMES.BROWSER.TAB_GROUP,
+  TOOL_NAMES.BROWSER.NETWORK_REQUEST,
+  TOOL_NAMES.BROWSER.JAVASCRIPT,
+  TOOL_NAMES.BROWSER.CDP_COMMAND,
+  TOOL_NAMES.BROWSER.CDP_BATCH,
+  TOOL_NAMES.BROWSER.CONSOLE,
+  TOOL_NAMES.BROWSER.COLLECT_DEBUG_EVIDENCE,
+  TOOL_NAMES.BROWSER.QUERY_ELEMENTS,
+  TOOL_NAMES.BROWSER.GET_ELEMENT_HTML,
+  TOOL_NAMES.BROWSER.CLIPBOARD,
+  TOOL_NAMES.BROWSER.WAIT_FOR_TAB,
+  TOOL_NAMES.BROWSER.WAIT_FOR,
+  TOOL_NAMES.BROWSER.ASSERT,
+]);
+
 type JsonSchemaObject = Record<string, unknown>;
 
 const READ_ONLY_TOOLS = new Set<string>([
@@ -2386,8 +2451,22 @@ function getToolAnnotations(name: string): ToolAnnotations {
   };
 }
 
-export const TOOL_SCHEMAS: Tool[] = RAW_TOOL_SCHEMAS.map((tool) => ({
-  ...tool,
-  inputSchema: closeDeclaredObjectSchemas(tool.inputSchema) as Tool['inputSchema'],
-  annotations: getToolAnnotations(tool.name),
-}));
+function getToolOutputSchema(name: string): Tool['outputSchema'] | undefined {
+  if (name === TOOL_NAMES.BROWSER.HEALTH) return HEALTH_OUTPUT_SCHEMA;
+  if (name === TOOL_NAMES.BROWSER.GET_WINDOWS_AND_TABS) {
+    return BROWSER_INVENTORY_OUTPUT_SCHEMA;
+  }
+  if (name === TOOL_NAMES.BROWSER.HISTORY) return HISTORY_OUTPUT_SCHEMA;
+  if (SUCCESS_OUTPUT_TOOLS.has(name)) return SUCCESS_OUTPUT_SCHEMA;
+  return undefined;
+}
+
+export const TOOL_SCHEMAS: Tool[] = RAW_TOOL_SCHEMAS.map((tool) => {
+  const outputSchema = getToolOutputSchema(tool.name);
+  return {
+    ...tool,
+    inputSchema: closeDeclaredObjectSchemas(tool.inputSchema) as Tool['inputSchema'],
+    annotations: getToolAnnotations(tool.name),
+    ...(outputSchema ? { outputSchema } : {}),
+  };
+});

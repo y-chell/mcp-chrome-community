@@ -1,4 +1,8 @@
-import { createErrorResponse, type ToolResult } from '@/common/tool-handler';
+import {
+  createErrorResponse,
+  createStructuredToolResult,
+  type ToolResult,
+} from '@/common/tool-handler';
 import { MessageTarget, OFFSCREEN_MESSAGE_TYPES } from '@/common/message-types';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { offscreenManager } from '@/utils/offscreen-manager';
@@ -28,10 +32,7 @@ type ClipboardReadSource = 'page-navigator' | 'offscreen';
 type ClipboardWriteSource = 'page-navigator' | 'offscreen' | 'page-exec-command';
 
 function jsonSuccess(payload: Record<string, unknown>): ToolResult {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(payload) }],
-    isError: false,
-  };
+  return createStructuredToolResult(payload);
 }
 
 async function sendClipboardMessage(

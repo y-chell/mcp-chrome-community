@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createStructuredToolResult } from '@/common/tool-handler';
 import {
   clearBrowserToolSessionState,
   getBrowserToolSessionBinding,
@@ -39,15 +40,17 @@ describe('browser tool session context', () => {
     tabsById.set(10, { id: 10, windowId: 1 } as chrome.tabs.Tab);
     const seenArgs: any[] = [];
 
-    await runBrowserToolCallWithIsolation(
+    const navigateResult = await runBrowserToolCallWithIsolation(
       'chrome_navigate',
       { url: 'https://example.test/' },
       { sessionId: 's1' },
       async (args) => {
         seenArgs.push(args);
-        return textResult({ success: true, tabId: 10, windowId: 1 });
+        return createStructuredToolResult({ success: true, tabId: 10, windowId: 1 });
       },
     );
+
+    expect(navigateResult.structuredContent).toEqual({ success: true, tabId: 10, windowId: 1 });
 
     await runBrowserToolCallWithIsolation(
       'chrome_read_page',
@@ -62,6 +65,31 @@ describe('browser tool session context', () => {
     expect(seenArgs[0]).toEqual({ url: 'https://example.test/' });
     expect(seenArgs[1]).toEqual({ tabId: 10 });
     expect(getBrowserToolSessionBinding('s1')).toMatchObject({ tabId: 10, windowId: 1 });
+  });
+
+  it('keeps non-JSON text results unchanged', async () => {
+    const result = await runBrowserToolCallWithIsolation(
+      'chrome_read_page',
+      {},
+      { sessionId: 's1' },
+      async () => ({
+        content: [{ type: 'text' as const, text: 'ready' }],
+        isError: false,
+      }),
+    );
+
+    expect(result).not.toHaveProperty('structuredContent');
+  });
+
+  it('does not infer structuredContent from legacy JSON text', async () => {
+    const result = await runBrowserToolCallWithIsolation(
+      'chrome_read_page',
+      {},
+      { sessionId: 's1' },
+      async () => textResult({ success: true }),
+    );
+
+    expect(result).not.toHaveProperty('structuredContent');
   });
 
   it('closes the bound tab when close_tabs has no explicit target', async () => {

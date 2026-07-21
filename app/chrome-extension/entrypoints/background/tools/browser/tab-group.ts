@@ -1,4 +1,8 @@
-import { createErrorResponse, type ToolResult } from '@/common/tool-handler';
+import {
+  createErrorResponse,
+  createStructuredToolResult,
+  type ToolResult,
+} from '@/common/tool-handler';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 
 type TabGroupAction = 'list' | 'create' | 'update' | 'move' | 'ungroup';
@@ -25,10 +29,7 @@ interface TabGroupToolParams {
 }
 
 function jsonSuccess(payload: Record<string, unknown>): ToolResult {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(payload) }],
-    isError: false,
-  };
+  return createStructuredToolResult(payload);
 }
 
 function hasTabGroupsApi(): boolean {

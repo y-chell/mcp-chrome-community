@@ -1,4 +1,8 @@
-import { createErrorResponse, type ToolResult } from '@/common/tool-handler';
+import {
+  createErrorResponse,
+  createStructuredToolResult,
+  type ToolResult,
+} from '@/common/tool-handler';
 import { BaseBrowserToolExecutor } from '../base-browser';
 import { TOOL_NAMES } from 'chrome-mcp-shared';
 
@@ -67,10 +71,7 @@ class ListFramesTool extends BaseBrowserToolExecutor {
   name = TOOL_NAMES.BROWSER.LIST_FRAMES;
 
   private createJsonSuccess(payload: Record<string, unknown>): ToolResult {
-    return {
-      content: [{ type: 'text', text: JSON.stringify(payload) }],
-      isError: false,
-    };
+    return createStructuredToolResult(payload);
   }
 
   async execute(args: ListFramesParams): Promise<ToolResult> {
@@ -180,10 +181,7 @@ class WaitForTabTool extends BaseBrowserToolExecutor {
   name = TOOL_NAMES.BROWSER.WAIT_FOR_TAB;
 
   private createJsonSuccess(payload: Record<string, unknown>): ToolResult {
-    return {
-      content: [{ type: 'text', text: JSON.stringify(payload) }],
-      isError: false,
-    };
+    return createStructuredToolResult(payload);
   }
 
   private getTimeoutMs(args: WaitForTabParams): number {

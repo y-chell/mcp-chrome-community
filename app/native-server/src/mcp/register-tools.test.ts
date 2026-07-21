@@ -77,6 +77,23 @@ describe('structured tool results', () => {
     expect(result.structuredContent).toEqual({ ok: true, count: 2 });
   });
 
+  test('preserves extension-provided structuredContent without reparsing legacy text', async () => {
+    const content = [{ type: 'text', text: '{"ok":false,"source":"content"}' }];
+    sendRequest.mockResolvedValueOnce({
+      status: 'success',
+      data: { content, structuredContent: { ok: true, source: 'extension' } },
+    });
+    const { callTool } = createServerHarness();
+
+    const result = await callTool(
+      { params: { name: 'chrome_get_web_content', arguments: {} } },
+      {},
+    );
+
+    expect(result.content).toEqual(content);
+    expect(result.structuredContent).toEqual({ ok: true, source: 'extension' });
+  });
+
   test.each([
     ['array', '[1,2]'],
     ['number', '42'],
@@ -131,7 +148,7 @@ describe('structured tool results', () => {
 
     expect(result.structuredContent).toEqual(parsedText);
     expect(result.structuredContent).toMatchObject({
-      status: 'ok',
+      status: 'stale',
       bridge: { sessionId: 'session-1', requestId: '7' },
     });
   });
