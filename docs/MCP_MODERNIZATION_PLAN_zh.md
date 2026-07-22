@@ -108,9 +108,9 @@ HTTP/SSE 传输的鉴权、Origin/Host 校验、会话生命周期和限流单�
 
 ### 第五阶段：扩展端原生结构化结果
 
-- [ ] 按工具族定义稳定的 `outputSchema`。
-- [ ] 扩展端直接返回结构化对象，减少 Native Server 猜测 JSON 文本。
-- [ ] 增加真实 Chrome 端到端协议测试和客户端兼容矩阵。
+- [x] 按工具族定义稳定的 `outputSchema`。
+- [x] 扩展端直接返回结构化对象，减少 Native Server 猜测 JSON 文本。
+- [x] 增加真实 Chrome 端到端协议测试和客户端兼容矩阵。
 
 ## 测试策略
 
@@ -327,3 +327,34 @@ Tasks API 已完成 SDK 1.29 级别的可用性评估，但没有进行对外试
 - `chrome-mcp-shared` 构建和 Native Server `tsc --noEmit` 通过。
 - Chrome MV3 扩展 `1.0.11` 生产构建通过；清单版本为 3，清单版本号为 `1.0.11`，后台脚本、页面、内容脚本和图标共 12 个具体引用全部存在。
 - 根级类型检查脚本和 GitHub Actions 均显式执行扩展 `vue-tsc`，后续新增类型错误会直接导致验证失败。
+
+## 2026-07-22 第五阶段实施结果
+
+第五阶段已完成扩展端原生结构化结果、稳定输出 Schema 和真实客户端兼容验证。实现只为结果形态稳定的 JSON 工具声明 `outputSchema`，没有给全部工具统一挂开放对象 Schema，避免多模态或动态结果被错误约束。
+
+### 结构化结果与 Schema 范围
+
+- Shared 按 Health、浏览器清单、History 和包含 `success: boolean` 的成功对象等工具族定义稳定 Schema。
+- 18 个浏览器工具声明 `outputSchema`：`chrome_health`、`get_windows_and_tabs`、`chrome_list_frames`、`chrome_scan_compact`、`chrome_query_elements`、`chrome_get_element_html`、`chrome_clipboard`、`chrome_wait_for_tab`、`chrome_wait_for`、`chrome_assert`、`chrome_tab_group`、`chrome_network_request`、`chrome_history`、`chrome_javascript`、`chrome_cdp_command`、`chrome_cdp_batch`、`chrome_console` 和 `chrome_collect_debug_evidence`。
+- `chrome_screenshot` 等多模态或结果形态不稳定的工具不声明固定输出 Schema。Meta 工具中，`chrome_search_tools` 和 `chrome_describe_tool` 使用各自的具体 Schema；可代理不同结果形态的 `chrome_call_tool` 不声明统一 `outputSchema`。
+- 扩展公共执行层新增 `createStructuredToolResult()`，稳定工具在结果源头同时生成 legacy `content` 和 `structuredContent`，不再依赖执行边界猜测 JSON 文本。
+- 浏览器会话上下文和 Native Server 优先读取扩展提供的 `structuredContent`。旧扩展结果、动态 Flow 和其他历史结果仍保留 JSON 文本解析回退，作为向后兼容路径而非新工具的默认实现。
+
+### 客户端兼容与真实 Chrome E2E
+
+- STDIO 冒烟脚本新增原始 JSON-RPC 客户端与官方 `@modelcontextprotocol/sdk` Client 的兼容矩阵；原始客户端使用协议版本 `2024-11-05`。
+- 兼容矩阵验证 `tools/list` 可见 `chrome_health.outputSchema`、官方 SDK 会实际校验输出 Schema、legacy `content` 与 `structuredContent` 同时存在，且二者表达的 JSON 内容一致。
+- `--call-health` 和 `--real-browser` 均执行兼容矩阵。真实 Chrome 流程覆盖页面导航、等待、页面读取、hover、drag、表单、JavaScript、剪贴板、异步更新、控制台与调试证据、截图、新标签页等待、标签页分组和清理。
+- 修复 fixture HTTP Server 清理挂起：停止接受新连接后调用 `server.closeAllConnections()` 关闭 Chrome 保留的 keep-alive 连接，并增加 `real-browser fixture started`、`real-browser cleanup started` 和 `real-browser cleanup completed` 阶段日志。
+
+### 验收结果
+
+- `pnpm run typecheck` 通过，包括 Shared 构建、Shared `tsc --noEmit`、Native Server `tsc --noEmit` 和 Extension `vue-tsc --noEmit`。
+- 扩展定向测试通过：2 个测试文件、9 个测试。
+- Native Server 定向测试通过：3 个测试套件、44 个测试。
+- `pnpm smoke:stdio` 通过，静态工具数为 41。
+- `pnpm smoke:stdio -- --call-health --timeout-ms 30000 --verbose` 通过，legacy JSON-RPC 与官方 SDK 的 Schema、legacy content 和 structured content 兼容检查全部成功。
+- `node app/native-server/dist/scripts/mcp-stdio-smoke.js --real-browser --timeout-ms 30000 --verbose` 退出码为 0，约 9 秒完成；实际 Chrome 扩展已连接，完整 fixture 流程、兼容矩阵和清理阶段全部通过。
+- 验证时扩展版本为 `1.0.11`，扩展 ID 为 `hbdgbgagpkpjffpklnamcljpakneikee`，Schema 工具数为 41，Schema Hash 为 `375ddc32`，Native Host 端口为 12306，STDIO profile 为 `full`。
+
+`pnpm build:native` 的 TypeScript 编译和文件复制可以完成，但运行中的常驻 Native Host 会占用 `app/native-server/dist`，导致清理旧目录时报 `EPERM`。本阶段未停止用户正在使用的 Native Host；该占用不影响上述类型检查和真实 Chrome E2E 结果，如需验证完全干净的 Native 构建，应在明确暂停 Native Host 后单独执行。
