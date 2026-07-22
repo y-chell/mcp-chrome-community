@@ -1,11 +1,15 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import readline from 'node:readline';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   CODEX_AUTO_INSTRUCTIONS,
   DEFAULT_CODEX_CONFIG,
+  type AgentEngineInfo,
+  type AgentModelInfo,
   type CodexEngineConfig,
+  type CodexReasoningEffort,
 } from 'chrome-mcp-shared';
 import type { AgentEngine, EngineExecutionContext, EngineInitOptions } from './types';
 import type { AgentMessage, RealtimeEvent } from '../types';
@@ -20,6 +24,110 @@ interface TodoListItem {
   text: string;
   completed: boolean;
   index: number;
+}
+
+const CODEX_REASONING_EFFORTS = new Set<CodexReasoningEffort>([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+]);
+
+interface CodexCatalogModel {
+  slug?: unknown;
+  display_name?: unknown;
+  description?: unknown;
+  default_reasoning_level?: unknown;
+  supported_reasoning_levels?: unknown;
+  input_modalities?: unknown;
+  visibility?: unknown;
+}
+
+interface CodexCommand {
+  executable: string;
+  prefixArgs: string[];
+}
+
+function resolveCodexCommand(): CodexCommand {
+  if (process.platform !== 'win32') {
+    return { executable: 'codex', prefixArgs: [] };
+  }
+
+  const searchDirs = [
+    path.dirname(process.execPath),
+    ...(process.env.PATH ?? '').split(path.delimiter),
+  ]
+    .map((entry) => entry.trim().replace(/^"|"$/g, ''))
+    .filter(Boolean);
+
+  for (const directory of new Set(searchDirs)) {
+    const executable = path.join(directory, 'codex.exe');
+    if (existsSync(executable)) {
+      return { executable, prefixArgs: [] };
+    }
+
+    // npm's Windows shim cannot be spawned directly on current Node releases.
+    const script = path.join(directory, 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+    if (existsSync(script)) {
+      return { executable: process.execPath, prefixArgs: [script] };
+    }
+  }
+
+  throw new Error('Codex CLI executable was not found on PATH');
+}
+
+export function parseCodexModelCatalog(raw: string): AgentModelInfo[] {
+  const parsed = JSON.parse(raw) as { models?: unknown };
+  if (!Array.isArray(parsed.models)) {
+    throw new Error('Codex model catalog did not contain a models array');
+  }
+
+  const models: AgentModelInfo[] = [];
+  for (const entry of parsed.models) {
+    if (!entry || typeof entry !== 'object') continue;
+    const model = entry as CodexCatalogModel;
+    if (typeof model.slug !== 'string' || !model.slug.trim()) continue;
+    if (model.visibility === 'hide') continue;
+
+    const efforts = Array.isArray(model.supported_reasoning_levels)
+      ? model.supported_reasoning_levels
+          .map((level) =>
+            level && typeof level === 'object' ? (level as { effort?: unknown }).effort : undefined,
+          )
+          .filter(
+            (effort): effort is CodexReasoningEffort =>
+              typeof effort === 'string' &&
+              CODEX_REASONING_EFFORTS.has(effort as CodexReasoningEffort),
+          )
+      : [];
+    const defaultReasoningEffort =
+      typeof model.default_reasoning_level === 'string' &&
+      CODEX_REASONING_EFFORTS.has(model.default_reasoning_level as CodexReasoningEffort)
+        ? (model.default_reasoning_level as CodexReasoningEffort)
+        : undefined;
+
+    models.push({
+      id: model.slug.trim(),
+      name:
+        typeof model.display_name === 'string' && model.display_name.trim()
+          ? model.display_name.trim()
+          : model.slug.trim(),
+      description:
+        typeof model.description === 'string' && model.description.trim()
+          ? model.description.trim()
+          : undefined,
+      supportsImages:
+        Array.isArray(model.input_modalities) && model.input_modalities.includes('image'),
+      supportedReasoningEfforts: efforts.length > 0 ? efforts : undefined,
+      defaultReasoningEffort,
+    });
+  }
+
+  return models;
 }
 
 /**
@@ -38,9 +146,40 @@ export class CodexEngine implements AgentEngine {
   public readonly name = 'codex' as const;
   public readonly supportsMcp = false;
   private readonly toolBridge: AgentToolBridge;
+  private engineInfoCache: { expiresAt: number; value: AgentEngineInfo } | null = null;
 
   constructor(toolBridge?: AgentToolBridge) {
     this.toolBridge = toolBridge ?? new AgentToolBridge();
+  }
+
+  async getInfo(): Promise<AgentEngineInfo> {
+    if (this.engineInfoCache && this.engineInfoCache.expiresAt > Date.now()) {
+      return this.engineInfoCache.value;
+    }
+
+    const baseInfo: AgentEngineInfo = {
+      name: this.name,
+      supportsMcp: this.supportsMcp,
+      defaultModel: '',
+      authMode: 'local-cli',
+    };
+
+    try {
+      const models = await this.discoverModels();
+      const value: AgentEngineInfo = {
+        ...baseInfo,
+        models,
+        modelSource: 'runtime',
+      };
+      this.engineInfoCache = { expiresAt: Date.now() + 5 * 60_000, value };
+      return value;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[CodexEngine] Model discovery failed, using UI fallback: ${message}`);
+      const value: AgentEngineInfo = { ...baseInfo, modelSource: 'fallback' };
+      this.engineInfoCache = { expiresAt: Date.now() + 30_000, value };
+      return value;
+    }
   }
 
   /**
@@ -104,16 +243,12 @@ export class CodexEngine implements AgentEngine {
       ? await this.appendProjectContext(normalizedInstruction, repoPath)
       : normalizedInstruction;
 
-    const executable = process.platform === 'win32' ? 'codex.cmd' : 'codex';
-    const args: string[] = [
-      'exec',
-      '--json',
-      '--skip-git-repo-check',
-      '--color',
-      'never',
-      '--cd',
-      repoPath,
-    ];
+    const { executable, prefixArgs } = resolveCodexCommand();
+    const args: string[] = [];
+    if (resolvedConfig.enableWebSearch) {
+      args.push('--search');
+    }
+    args.push('exec', '--json', '--skip-git-repo-check', '--color', 'never', '--cd', repoPath);
 
     args.push(...getCodexExecutionPolicyArgs(resolvedConfig));
 
@@ -170,7 +305,7 @@ export class CodexEngine implements AgentEngine {
 
     // Use explicit Promise wrapping to ensure child process errors are properly rejected.
     return new Promise<void>((resolve, reject) => {
-      const child = spawn(executable, args, {
+      const child = spawn(executable, [...prefixArgs, ...args], {
         cwd: repoPath,
         env: this.buildCodexEnv(),
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -725,20 +860,65 @@ Work directly in the current directory. Do not create subdirectories unless spec
   private buildCodexConfigArgs(config: CodexEngineConfig): string[] {
     const args: string[] = [];
 
-    const pushConfig = (key: string, value: string | number | boolean): void => {
-      args.push('-c', `${key}=${String(value)}`);
-    };
-
-    pushConfig('include_apply_patch_tool', config.includeApplyPatchTool);
-    pushConfig('include_plan_tool', config.includePlanTool);
-    pushConfig('tools.web_search_request', config.enableWebSearch);
-    pushConfig('use_experimental_streamable_shell_tool', config.useStreamableShell);
-    pushConfig('max_turns', config.maxTurns);
-    pushConfig('max_thinking_tokens', config.maxThinkingTokens);
-    pushConfig('reasoning_effort', config.reasoningEffort);
+    args.push('-c', `model_reasoning_effort=${JSON.stringify(config.reasoningEffort)}`);
     args.push('-c', `instructions=${JSON.stringify(config.autoInstructions)}`);
 
     return args;
+  }
+
+  private discoverModels(): Promise<AgentModelInfo[]> {
+    const { executable, prefixArgs } = resolveCodexCommand();
+
+    return new Promise<AgentModelInfo[]>((resolve, reject) => {
+      const child = spawn(executable, [...prefixArgs, 'debug', 'models'], {
+        env: this.buildCodexEnv(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+      let stdout = '';
+      let stderr = '';
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        child.kill();
+        reject(new Error('codex debug models timed out'));
+      }, 10_000);
+
+      child.stdout?.on('data', (chunk) => {
+        stdout += String(chunk);
+        if (stdout.length > 4 * 1024 * 1024) {
+          child.kill();
+        }
+      });
+      child.stderr?.on('data', (chunk) => {
+        stderr = `${stderr}${String(chunk)}`.slice(-8_192);
+      });
+      child.on('error', (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.on('close', (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (code !== 0) {
+          reject(new Error(stderr.trim() || `codex debug models exited with code ${code}`));
+          return;
+        }
+        try {
+          const models = parseCodexModelCatalog(stdout.trim());
+          if (models.length === 0) {
+            throw new Error('Codex model catalog was empty');
+          }
+          resolve(models);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
   }
 
   /**

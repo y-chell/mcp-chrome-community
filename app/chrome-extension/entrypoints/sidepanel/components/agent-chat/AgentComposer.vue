@@ -172,7 +172,7 @@
           </button>
 
           <!-- Model Selector (auto-width) -->
-          <div v-if="availableModels.length > 0" class="relative" data-tooltip="Switch model">
+          <div v-if="selectableModels.length > 1" class="relative" data-tooltip="Switch model">
             <!-- Hidden span to measure text width -->
             <span
               ref="modelWidthRef"
@@ -192,7 +192,7 @@
               }"
               @change="handleModelChange"
             >
-              <option v-for="m in availableModels" :key="m.id" :value="m.id">
+              <option v-for="m in selectableModels" :key="m.id || 'default'" :value="m.id">
                 {{ m.name }}
               </option>
             </select>
@@ -349,7 +349,7 @@
           </button>
 
           <!-- Model Selector -->
-          <div v-if="availableModels.length > 0" class="relative" data-tooltip="Switch model">
+          <div v-if="selectableModels.length > 1" class="relative" data-tooltip="Switch model">
             <select
               :value="selectedModel"
               class="py-0.5 text-[10px] border-none bg-transparent cursor-pointer appearance-none pr-4 pl-1.5"
@@ -360,7 +360,7 @@
               }"
               @change="handleModelChange"
             >
-              <option v-for="m in availableModels" :key="m.id" :value="m.id">
+              <option v-for="m in selectableModels" :key="m.id || 'default'" :value="m.id">
                 {{ m.name }}
               </option>
             </select>
@@ -454,9 +454,17 @@ const supportsImages = computed(() => {
 const modelWidthRef = ref<HTMLSpanElement | null>(null);
 const modelSelectWidth = ref('auto');
 
+const selectableModels = computed<ModelDefinition[]>(() => {
+  const models: ModelDefinition[] = [{ id: '', name: 'CLI default' }, ...props.availableModels];
+  if (props.selectedModel && !models.some((model) => model.id === props.selectedModel)) {
+    models.push({ id: props.selectedModel, name: props.selectedModel });
+  }
+  return models;
+});
+
 const selectedModelName = computed(() => {
-  const model = props.availableModels.find((m) => m.id === props.selectedModel);
-  return model?.name || props.selectedModel || '';
+  const model = selectableModels.value.find((m) => m.id === props.selectedModel);
+  return model?.name || props.selectedModel || 'CLI default';
 });
 
 // Update width when model changes

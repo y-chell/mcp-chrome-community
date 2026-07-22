@@ -97,8 +97,10 @@
             >
               Model
             </label>
-            <select
+            <input
               v-model="localModel"
+              list="agent-session-models"
+              placeholder="CLI default or model ID"
               class="w-full px-2 py-1.5 text-xs"
               :style="{
                 backgroundColor: 'var(--ac-surface, #ffffff)',
@@ -106,12 +108,12 @@
                 borderRadius: 'var(--ac-radius-button, 8px)',
                 color: 'var(--ac-text, #1a1a1a)',
               }"
-            >
-              <option value="">Default (server setting)</option>
+            />
+            <datalist id="agent-session-models">
               <option v-for="m in availableModels" :key="m.id" :value="m.id">
                 {{ m.name }}
               </option>
-            </select>
+            </datalist>
           </div>
 
           <!-- Reasoning Effort (Codex only) -->
@@ -139,7 +141,7 @@
             <p class="text-[10px]" :style="{ color: 'var(--ac-text-subtle, #a8a29e)' }">
               Controls the reasoning depth. Higher effort = better quality but slower.
               <span v-if="!availableReasoningEfforts.includes('xhigh')" class="block mt-1">
-                Note: xhigh is only available for gpt-5.2 and gpt-5.1-codex-max models.
+                Available efforts come from the local Codex model catalog.
               </span>
             </p>
           </div>
@@ -421,6 +423,7 @@
 <script lang="ts" setup>
 import { ref, computed, watch } from 'vue';
 import type {
+  AgentEngineInfo,
   AgentSession,
   AgentManagementInfo,
   AgentSystemPromptConfig,
@@ -437,6 +440,7 @@ import {
 const props = defineProps<{
   open: boolean;
   session: AgentSession | null;
+  engines: AgentEngineInfo[];
   managementInfo: AgentManagementInfo | null;
   isLoading: boolean;
   isSaving: boolean;
@@ -480,8 +484,8 @@ const canSave = computed(
 // Get available reasoning efforts based on selected model
 const availableReasoningEfforts = computed<readonly CodexReasoningEffort[]>(() => {
   if (!isCodexEngine.value) return [];
-  const effectiveModel = localModel.value || getDefaultModelForCli('codex');
-  return getCodexReasoningEfforts(effectiveModel);
+  const effectiveModel = localModel.value || getDefaultModelForCli('codex', props.engines);
+  return getCodexReasoningEfforts(effectiveModel, availableModels.value);
 });
 
 // Normalize reasoning effort when model changes
@@ -494,7 +498,7 @@ const normalizedReasoningEffort = computed(() => {
 
 const availableModels = computed(() => {
   if (!props.session?.engineName) return [];
-  return getModelsForCli(props.session.engineName);
+  return getModelsForCli(props.session.engineName, props.engines);
 });
 
 // Initialize local state when session changes

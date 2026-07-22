@@ -6,6 +6,7 @@ import { detectCcr, validateCcrConfig } from '../ccr-detector';
 import { getProject } from '../project-service';
 import { getChromeMcpAuthHeaders, getChromeMcpUrl } from '../../constant';
 import { resolveClaudePermissionPolicy } from '../claude-permission-policy';
+import type { AgentEngineInfo } from 'chrome-mcp-shared';
 
 // Images are provided to Claude Code via local file paths referenced in the prompt text.
 // Claude Code CLI reads images from local paths, so we write base64 images to temp files and reference them.
@@ -51,6 +52,42 @@ const TOOL_NAME_ACTION_MAP: Record<string, ToolAction> = {
 export class ClaudeEngine implements AgentEngine {
   public readonly name = 'claude' as const;
   public readonly supportsMcp = true;
+
+  getInfo(): AgentEngineInfo {
+    return {
+      name: this.name,
+      supportsMcp: this.supportsMcp,
+      defaultModel: '',
+      modelSource: 'aliases',
+      authMode: 'local-cli',
+      models: [
+        {
+          id: 'fable',
+          name: 'Claude Fable 5',
+          description: 'Latest Fable model through the Claude Code alias',
+          supportsImages: true,
+        },
+        {
+          id: 'opus',
+          name: 'Claude Opus (latest)',
+          description: 'Latest Opus model available to the local Claude Code account',
+          supportsImages: true,
+        },
+        {
+          id: 'sonnet',
+          name: 'Claude Sonnet (latest)',
+          description: 'Latest Sonnet model available to the local Claude Code account',
+          supportsImages: true,
+        },
+        {
+          id: 'haiku',
+          name: 'Claude Haiku (latest)',
+          description: 'Latest Haiku model available to the local Claude Code account',
+          supportsImages: true,
+        },
+      ],
+    };
+  }
 
   /**
    * Maximum number of stderr lines to keep in memory.
@@ -108,8 +145,7 @@ export class ClaudeEngine implements AgentEngine {
     }
 
     // Resolve model
-    const resolvedModel =
-      model?.trim() || process.env.CLAUDE_DEFAULT_MODEL || 'claude-sonnet-4-20250514';
+    const resolvedModel = model?.trim() || process.env.CLAUDE_DEFAULT_MODEL?.trim() || undefined;
 
     // State management
     const stderrBuffer: string[] = [];
@@ -388,7 +424,9 @@ export class ClaudeEngine implements AgentEngine {
 
     try {
       // Use console.error for logging to avoid polluting stdout (Native Messaging protocol)
-      console.error(`[ClaudeEngine] Starting query with model: ${resolvedModel}`);
+      console.error(
+        `[ClaudeEngine] Starting query with model: ${resolvedModel || 'Claude Code default'}`,
+      );
       console.error(`[ClaudeEngine] Working directory: ${repoPath}`);
 
       // Check for image attachments - prefer resolvedImagePaths (persisted), fallback to temp files
@@ -563,7 +601,6 @@ export class ClaudeEngine implements AgentEngine {
       const queryOptions: Record<string, unknown> = {
         cwd: repoPath,
         additionalDirectories: [repoPath],
-        model: resolvedModel,
         // Dangerous bypass requires an explicit session mode and acknowledgement.
         permissionMode: resolvedPermissionMode,
         allowDangerouslySkipPermissions: resolvedAllowDangerouslySkipPermissions,
@@ -591,6 +628,9 @@ export class ClaudeEngine implements AgentEngine {
           console.error(`[ClaudeEngine][stderr] ${line}`);
         },
       };
+      if (resolvedModel) {
+        queryOptions.model = resolvedModel;
+      }
 
       // Apply additional SDK options from optionsConfig
       if (optionsRecord) {

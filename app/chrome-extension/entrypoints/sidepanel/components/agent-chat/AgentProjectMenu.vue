@@ -106,8 +106,10 @@
     <!-- Model Selection -->
     <div class="px-3 py-2 flex items-center gap-2">
       <span class="text-xs w-12" :style="{ color: 'var(--ac-text-muted, #6e6e6e)' }"> Model </span>
-      <select
+      <input
         :value="normalizedModel"
+        list="agent-project-models"
+        placeholder="CLI default or model ID"
         class="flex-1 px-2 py-1 text-xs rounded"
         :style="{
           backgroundColor: 'var(--ac-surface-muted, #f2f0eb)',
@@ -117,12 +119,12 @@
         }"
         :disabled="isModelDisabled"
         @change="handleModelChange"
-      >
-        <option value="">Default</option>
+      />
+      <datalist id="agent-project-models">
         <option v-for="m in availableModels" :key="m.id" :value="m.id">
           {{ m.name }}
         </option>
-      </select>
+      </datalist>
     </div>
 
     <!-- Reasoning Effort (Codex only) -->
@@ -257,7 +259,7 @@ const emit = defineEmits<{
 
 // Get available models based on selected CLI
 const availableModels = computed<ModelDefinition[]>(() => {
-  return getModelsForCli(props.selectedCli);
+  return getModelsForCli(props.selectedCli, props.engines);
 });
 
 // Normalize model value: ensure it exists in available models or fallback to empty
@@ -266,17 +268,12 @@ const normalizedModel = computed(() => {
   if (!trimmedModel) return '';
   // No CLI selected = model disabled, show empty (server will use default)
   if (!props.selectedCli) return '';
-  const models = availableModels.value;
-  // If CLI selected but no models defined, fallback to empty
-  if (models.length === 0) return '';
-  // Check if current model is valid for selected CLI
-  const isValid = models.some((m) => m.id === trimmedModel);
-  return isValid ? trimmedModel : '';
+  return trimmedModel;
 });
 
 // Check if Model select should be disabled
 const isModelDisabled = computed(() => {
-  return !props.selectedCli || availableModels.value.length === 0;
+  return !props.selectedCli;
 });
 
 // Show reasoning effort option only when Codex CLI is selected
@@ -287,8 +284,8 @@ const showReasoningEffortOption = computed(() => {
 // Get available reasoning efforts based on selected model
 const availableReasoningEfforts = computed<readonly CodexReasoningEffort[]>(() => {
   if (!showReasoningEffortOption.value) return [];
-  const effectiveModel = normalizedModel.value || getDefaultModelForCli('codex');
-  return getCodexReasoningEfforts(effectiveModel);
+  const effectiveModel = normalizedModel.value || getDefaultModelForCli('codex', props.engines);
+  return getCodexReasoningEfforts(effectiveModel, availableModels.value);
 });
 
 // Normalize reasoning effort value - fallback to highest supported
@@ -316,16 +313,7 @@ function handleCliChange(event: Event): void {
   const cli = (event.target as HTMLSelectElement).value;
   emit('cli:update', cli);
 
-  // Auto-select default model when CLI changes
-  if (cli) {
-    const defaultModel = getDefaultModelForCli(cli);
-    // Validate default model exists in available models
-    const models = getModelsForCli(cli);
-    const isValidDefault = models.some((m) => m.id === defaultModel);
-    emit('model:update', isValidDefault ? defaultModel : (models[0]?.id ?? ''));
-  } else {
-    emit('model:update', '');
-  }
+  emit('model:update', cli ? getDefaultModelForCli(cli, props.engines) : '');
 
   // Reset CCR when switching away from Claude
   if (cli !== 'claude') {
@@ -342,12 +330,15 @@ function handleChromeMcpChange(event: Event): void {
 }
 
 function handleModelChange(event: Event): void {
-  const newModel = (event.target as HTMLSelectElement).value;
+  const newModel = (event.target as HTMLInputElement).value;
   emit('model:update', newModel);
 
   // When model changes for Codex, validate reasoning effort
   if (props.selectedCli === 'codex') {
-    const supported = getCodexReasoningEfforts(newModel || getDefaultModelForCli('codex'));
+    const supported = getCodexReasoningEfforts(
+      newModel || getDefaultModelForCli('codex', props.engines),
+      availableModels.value,
+    );
     if (!supported.includes(props.reasoningEffort)) {
       // Auto-downgrade to highest supported effort
       emit('reasoning-effort:update', supported[supported.length - 1]);

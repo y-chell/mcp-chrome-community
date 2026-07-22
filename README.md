@@ -22,7 +22,7 @@
 
 ## 🎯 What is mcp-chrome-community?
 
-mcp-chrome-community is a Chrome extension-based **Model Context Protocol (MCP) server** that exposes your Chrome browser functionality to AI assistants like Claude, enabling complex browser automation, content analysis, and semantic search. Unlike traditional browser automation tools (like Playwright), **mcp-chrome-community** directly uses your daily Chrome browser, leveraging existing user habits, configurations, and login states, allowing various large models or chatbots to take control of your browser and truly become your everyday assistant.
+mcp-chrome-community is a **Model Context Protocol (MCP) browser server** built from a Chrome extension and a local Native Server. It exposes the current Chrome windows, tabs, login state, and browser capabilities to Codex, Claude Code, and other modern MCP clients. Unlike automation that starts a separate browser process, this project operates the Chrome profile the user is already running.
 
 ## ✨ Featured Addition
 
@@ -40,7 +40,7 @@ mcp-chrome-community is a Chrome extension-based **Model Context Protocol (MCP) 
 - 🏎 **Cross-Tab**: Cross-tab context
 - 🧠 **Semantic Search**: Built-in vector database for intelligent browser tab content discovery
 - 🔍 **Smart Content Analysis**: AI-powered text extraction and similarity matching
-- 🌐 **35+ Tools**: Support for screenshots, network monitoring, interactions, bookmarks, browsing history, waits/assertions, debug evidence, upload/download status, tab groups, and record/replay
+- 🌐 **41 Static Tools**: Support for screenshots, network monitoring, interactions, bookmarks, browsing history, waits/assertions, debug evidence, upload/download status, tab groups, and record/replay
 - 🚀 **SIMD-Accelerated AI**: Custom WebAssembly SIMD optimization for 4-8x faster vector operations
 
 ## ✅ Current Key Capabilities
@@ -52,6 +52,28 @@ mcp-chrome-community is a Chrome extension-based **Model Context Protocol (MCP) 
 - Network and files: `chrome_network_capture`, `chrome_network_request`, `chrome_upload_file`, `chrome_get_upload_status`, and `chrome_handle_download` cover capture, browser-context requests, upload status, drag/drop upload, and download status.
 - Browser data: `chrome_history`, `chrome_bookmark_*`, `chrome_tab_group`, and `chrome_clipboard` cover history, bookmarks, tab groups, and clipboard operations.
 - Version and real-browser checks: `chrome_health` reports extension version, bridge version, schema hash, tool count, and current browser state; real-browser tests cover forms, async updates, console, new tabs, clipboard, drag/drop, and tab groups.
+
+## 🔌 Modern MCP Capabilities
+
+- Uses `@modelcontextprotocol/sdk ^1.29.0`, recommends Streamable HTTP, and retains STDIO and legacy SSE compatibility.
+- Object tool results expose both legacy `content` and modern `structuredContent`; stable results declare `outputSchema`.
+- Tool contracts include strict input schemas and read-only, destructive, idempotent, and related `annotations`.
+- Dynamic workflow discovery uses a non-blocking cache and emits `notifications/tools/list_changed` after real catalog changes.
+- Cancellation and progress propagate through MCP, Native Messaging, extension queues, and cooperative wait tools.
+- STDIO supports `full`, `core`, and `search` catalogs. Compact profiles can still discover, inspect, and proxy-call hidden tools.
+- The HTTP layer supports Host/Origin validation, optional bearer authentication, session limits, and idle cleanup. Remote listeners require explicit security configuration.
+
+## 🤖 Built-in Assistant
+
+The extension sidepanel uses locally installed coding agents. It is not a separate chat service with its own API-key form:
+
+- Codex launches the local `codex` CLI and inherits login, provider, and default-model settings from `~/.codex`.
+- Claude uses the current Claude Agent SDK and inherits the local Claude Code login or supported environment variables.
+- Leaving the model empty delegates to the CLI/SDK default, avoiding stale extension defaults.
+- Codex models and reasoning efforts are discovered through `codex debug models`; Claude uses the latest `fable`, `opus`, `sonnet`, and `haiku` aliases.
+- Project and session settings accept arbitrary model IDs. Suggestions are not an allowlist.
+
+Each assistant run receives this project's local Streamable HTTP MCP endpoint without rewriting global Codex or Claude Code MCP configuration. Sessions, messages, and attachments remain in the local Native Server data directory.
 
 ## 🆚 Comparison with Similar Projects
 
@@ -73,6 +95,7 @@ mcp-chrome-community is a Chrome extension-based **Model Context Protocol (MCP) 
 - CI and release builds currently run on Node.js 24
 - Node.js 25 may work, but it is not part of the tested support matrix yet
 - Chrome/Chromium browser
+- The built-in assistant additionally requires a logged-in local `codex` or Claude Code installation; external MCP clients do not
 
 ### Installation Steps
 
@@ -379,7 +402,7 @@ Remaining work:
 - Move record/replay from "works" to stable and reusable.
 - Move automated tasks from one-off runs to publishable, debuggable, schedulable tasks.
 - Keep Chrome / Edge stable first, then evaluate Firefox.
-- Add clearer authentication and tool-permission tiers.
+- Continue refining permission tiers and audit metadata for high-risk browser tools.
 
 ### Windows desktop-level control, later
 
@@ -403,3 +426,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Architecture Design](docs/ARCHITECTURE.md) - Detailed technical architecture documentation
 - [TOOLS API](docs/TOOLS.md) - Complete tool API documentation
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issue solutions
+- [MCP Configuration](docs/mcp-cli-config.md) - Codex, Claude Code, authentication, and session settings

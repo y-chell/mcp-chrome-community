@@ -95,3 +95,40 @@ Wrapper logs are now stored in user-writable locations:
 - **macOS**: `~/Library/Logs/mcp-chrome-community/`
 - **Windows**: `%LOCALAPPDATA%\mcp-chrome-community\logs\`
 - **Linux**: `~/.local/state/mcp-chrome-community/logs/`
+
+## Built-in Assistant
+
+### Why there is no API-key field
+
+The sidepanel assistant does not keep separate third-party credentials. The Codex engine inherits the local Codex CLI login and provider configuration. The Claude engine inherits the local Claude Code login or supported environment variables. Verify them in a terminal:
+
+```bash
+codex --version
+codex login status
+claude --version
+claude auth status
+```
+
+These local engines are optional when the project is used only from an external MCP client.
+
+### The model list looks stale
+
+An empty model setting follows the local CLI default and is usually more reliable than a pinned model name. Codex suggestions come from `codex debug models`; restart the Native Server after upgrading Codex CLI to refresh them. Claude supports the current `fable`, `opus`, `sonnet`, and `haiku` aliases. Project and session settings also accept arbitrary full model IDs.
+
+### The assistant reports `Could not locate the bindings file`
+
+This means the native `better-sqlite3` module does not match the active Node.js ABI. It is not an MCP or model error. Reinstall the Release bridge under the active Node version. For a source checkout, run from the repository root:
+
+```bash
+npx --yes pnpm@8.15.9 rebuild better-sqlite3
+```
+
+Restart the Native Server afterward. Do not copy `node_modules` from another Node version or machine.
+
+### Codex or Claude opens but messages fail
+
+1. Run the corresponding CLI directly and confirm its login is still valid.
+2. Clear the model field and test the CLI default model first.
+3. Reload `/agent/engines` or reopen the sidepanel and confirm the Native Server detects the engine.
+4. Inspect Native Server logs for `[CodexEngine]` or `[ClaudeEngine]` errors.
+5. If Chrome MCP is enabled for the project, call `chrome_health` and compare extension, bridge, and schema versions.

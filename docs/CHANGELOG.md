@@ -5,7 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v1.0.12] - 2026-07-22
+
+### Added
+
+- **Runtime Codex model discovery**: the built-in assistant reads the local `codex debug models` catalog, including current per-model reasoning efforts, instead of relying only on a release-time list
+- **Future-proof model selection**: project and session settings accept arbitrary model IDs, and an empty value delegates to the local CLI/SDK default
+
+### Changed
+
+- **Claude Agent SDK refresh**: upgraded `@anthropic-ai/claude-agent-sdk` from `0.1.69` to `0.3.217`, with its current Anthropic SDK, MCP SDK, and Zod 4 peer baseline
+- **Claude model aliases**: replaced dated Claude 4.5 IDs with the rolling `fable`, `opus`, `sonnet`, and `haiku` aliases
+- **Modern Codex CLI arguments**: live search now uses the current global `--search` flag and reasoning uses `model_reasoning_effort`; removed obsolete per-run config overrides from the adapter
+- **Windows Codex launch**: resolves the installed Codex executable or npm entrypoint directly instead of spawning `codex.cmd`, avoiding `spawn EINVAL` on current Node.js releases
+
+### Documentation
+
+- **Post-modernization architecture**: README, architecture, tool contract, Native Server, and troubleshooting docs now describe Streamable HTTP, structured results, annotations, dynamic catalog notifications, cancellation/progress, HTTP security, STDIO profiles, and the local assistant credential model
 
 ## [v1.0.11] - 2026-07-17
 

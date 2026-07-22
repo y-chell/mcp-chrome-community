@@ -122,3 +122,40 @@ export CHROME_MCP_NODE_PATH=/path/to/your/node
 #### 效果问题
 
 不同的agent，不同的模型使用工具的效果是不一样的，这些都需要你自行尝试，我更推荐用聪明的agent，比如augment，claude code等等...
+
+### 内置智能助手
+
+#### 为什么没有 API key 输入框
+
+侧边栏助手不维护独立的第三方凭据。Codex 引擎读取本机 Codex CLI 的登录和 provider 配置，Claude 引擎读取本机 Claude Code 登录或它支持的环境变量。先在终端确认：
+
+```bash
+codex --version
+codex login status
+claude --version
+claude auth status
+```
+
+只使用外部 MCP 客户端时，不需要配置这两个本地助手引擎。
+
+#### 模型列表不是最新的
+
+模型留空会跟随本机 CLI 默认值，通常比固定型号更可靠。Codex 列表来自 `codex debug models`，升级 Codex CLI 后重启 Native Server 即可刷新；Claude 建议使用 `fable`、`opus`、`sonnet`、`haiku` 最新别名。项目和会话设置也允许直接填写任意完整模型 ID。
+
+#### 助手报 `Could not locate the bindings file`
+
+这是 `better-sqlite3` 原生模块与当前 Node.js ABI 不匹配，不是模型或 MCP 协议错误。升级 Node 后应在当前 Node 版本下重新安装 Release bridge；源码开发环境可在仓库根目录执行：
+
+```bash
+npx --yes pnpm@8.15.9 rebuild better-sqlite3
+```
+
+随后重启 Native Server。不要复制其他 Node 版本或其他机器生成的 `node_modules`。
+
+#### Codex 或 Claude 能打开，但发送消息失败
+
+1. 在终端直接运行对应 CLI，确认登录没有过期。
+2. 模型改为空，先验证 CLI 默认模型。
+3. 调用 `/agent/engines` 或重新打开侧边栏，确认 Native Server 能发现本地引擎。
+4. 查看 Native Server 日志中的 `[CodexEngine]` 或 `[ClaudeEngine]` 错误。
+5. 如果项目启用了 Chrome MCP，调用 `chrome_health` 检查扩展、bridge 和 Schema 版本是否一致。

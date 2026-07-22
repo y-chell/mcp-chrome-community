@@ -5,12 +5,25 @@
 ## 📋 目录
 
 - [浏览器管理](#浏览器管理)
+- [MCP 结果契约](#mcp-结果契约)
 - [截图和视觉](#截图和视觉)
 - [网络监控](#网络监控)
 - [内容分析](#内容分析)
 - [交互操作](#交互操作)
 - [数据管理](#数据管理)
 - [响应格式](#响应格式)
+
+## MCP 结果契约
+
+当前版本保留旧客户端兼容，同时提供现代 MCP 结果：
+
+- 对象型成功结果继续在 `content[0].text` 中提供 JSON 文本，并同时返回同语义的 `structuredContent`。
+- 结果结构稳定的工具声明 `outputSchema`；图片、多模态和动态工作流结果不强行声明统一 Schema。
+- 工具定义包含严格输入 Schema 和行为 `annotations`。未知字段会在协议边界被拒绝，而不是静默忽略。
+- 支持 `AbortSignal` 的长操作会在客户端取消后尽快清理；下载、网络和通用等待可上报节流的进度通知。
+- 动态工作流目录更新后会发送 `notifications/tools/list_changed`，客户端可重新获取目录。
+
+STDIO 默认 `full` profile 公布 41 个静态工具。`core` 和 `search` profile 使用 `chrome_search_tools`、`chrome_describe_tool`、`chrome_call_tool` 按需发现和调用未直接公布的工具。
 
 ## 📊 浏览器管理
 

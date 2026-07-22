@@ -8,7 +8,7 @@ import type {
   RunningExecution,
 } from './engines/types';
 import type { AgentMessage, RealtimeEvent } from './types';
-import type { AttachmentMetadata } from 'chrome-mcp-shared';
+import type { AgentEngineInfo, AttachmentMetadata } from 'chrome-mcp-shared';
 import { AgentStreamManager } from './stream-manager';
 import { getProject, touchProjectActivity, updateProjectClaudeSessionId } from './project-service';
 import { createMessage as persistAgentMessage } from './message-service';
@@ -514,13 +514,22 @@ export class AgentChatService {
   /**
    * Expose registered engines for UI and diagnostics.
    */
-  getEngineInfos(): Array<{ name: EngineName; supportsMcp?: boolean }> {
-    const result: Array<{ name: EngineName; supportsMcp?: boolean }> = [];
+  async getEngineInfos(): Promise<AgentEngineInfo[]> {
+    const result: AgentEngineInfo[] = [];
     for (const engine of this.engines.values()) {
-      result.push({
-        name: engine.name,
-        supportsMcp: engine.supportsMcp,
-      });
+      try {
+        const info = engine.getInfo
+          ? await engine.getInfo()
+          : { name: engine.name, supportsMcp: engine.supportsMcp };
+        result.push({
+          ...info,
+          name: engine.name,
+          supportsMcp: engine.supportsMcp,
+        });
+      } catch (error) {
+        console.error(`[AgentChatService] Failed to inspect ${engine.name} engine:`, error);
+        result.push({ name: engine.name, supportsMcp: engine.supportsMcp });
+      }
     }
     return result;
   }

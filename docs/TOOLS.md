@@ -5,12 +5,25 @@ Complete reference for all available tools and their parameters.
 ## 📋 Table of Contents
 
 - [Browser Management](#browser-management)
+- [MCP Result Contract](#mcp-result-contract)
 - [Screenshots & Visual](#screenshots--visual)
 - [Network Monitoring](#network-monitoring)
 - [Content Analysis](#content-analysis)
 - [Interaction](#interaction)
 - [Data Management](#data-management)
 - [Response Format](#response-format)
+
+## MCP Result Contract
+
+The current release keeps old-client compatibility while exposing modern MCP results:
+
+- Successful object results remain available as JSON text in `content[0].text` and expose the same data through `structuredContent`.
+- Tools with stable result shapes declare `outputSchema`. Images, multimodal output, and dynamic workflows do not claim one universal schema.
+- Tool definitions include strict input schemas and behavioral `annotations`. Unknown fields are rejected at the protocol boundary instead of being silently ignored.
+- Long operations that support `AbortSignal` clean up promptly after client cancellation. Download, network, and general waits can emit throttled progress notifications.
+- Dynamic workflow changes emit `notifications/tools/list_changed`, allowing clients to refresh their catalog.
+
+STDIO uses the `full` profile by default and advertises 41 static tools. The `core` and `search` profiles use `chrome_search_tools`, `chrome_describe_tool`, and `chrome_call_tool` to discover and invoke tools that are not advertised directly.
 
 ## 📊 Browser Management
 

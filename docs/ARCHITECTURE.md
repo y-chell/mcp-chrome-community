@@ -1,308 +1,153 @@
-# mcp-chrome-community Architecture 🏗️
+# mcp-chrome-community Architecture
 
-This document provides a detailed technical overview of the mcp-chrome-community architecture, design decisions, and implementation details.
+This document describes the current community-fork runtime. The protocol layer targets `@modelcontextprotocol/sdk` v1.29 while retaining compatibility with clients that only consume text tool results.
 
-## 📋 Table of Contents
+## System Boundaries
 
-- [Overview](#overview)
-- [System Architecture](#system-architecture)
-- [Component Details](#component-details)
-- [Data Flow](#data-flow)
-- [AI Integration](#ai-integration)
-- [Performance Optimizations](#performance-optimizations)
-- [Security Considerations](#security-considerations)
+The project has four runtime boundaries:
 
-## 🎯 Overview
-
-mcp-chrome-community is a sophisticated browser automation platform that bridges AI assistants with Chrome browser capabilities through the Model Context Protocol (MCP). The architecture is designed for:
-
-- **High Performance**: SIMD-optimized AI operations and efficient native messaging
-- **Extensibility**: Modular tool system for easy feature additions
-- **Reliability**: Robust error handling and graceful degradation
-- **Security**: Sandboxed execution and permission-based access control
-
-## 🏗️ System Architecture
+1. MCP clients such as Codex, Claude Code, desktop clients, and other agents.
+2. The Native Server, which owns MCP transports, sessions, security checks, the local Agent API, and Native Messaging.
+3. The Chrome extension, which executes browser tools and maintains dynamic workflow and browser-session state.
+4. The user's current Chrome profile, including existing windows, tabs, sessions, and browser configuration.
 
 ```mermaid
-graph TB
-    subgraph "AI Assistant Layer"
-        A[Claude Desktop]
-        B[Custom MCP Client]
-        C[Other AI Tools]
-    end
+flowchart LR
+  subgraph Clients[External MCP clients]
+    Codex[Codex / Codex CLI]
+    Claude[Claude Code]
+    Other[Other MCP clients]
+  end
 
-    subgraph "MCP Protocol Layer"
-        D[HTTP/SSE Transport]
-        E[MCP Server Instance]
-        F[Tool Registry]
-    end
+  subgraph Native[Native Server]
+    HTTP[Streamable HTTP / Legacy SSE]
+    STDIO[STDIO Proxy]
+    Security[Host / Origin / Bearer checks]
+    Registry[MCP session registry]
+    MCP[MCP Server instance]
+    AgentAPI[Local Agent API]
+    AgentRuntime[Codex CLI / Claude Agent SDK]
+    NativeHost[Native Messaging Host]
+  end
 
-    subgraph "Native Server Layer"
-        G[Fastify HTTP Server]
-        H[Native Messaging Host]
-        I[Session Management]
-    end
+  subgraph Extension[Chrome extension]
+    Background[Background tool execution]
+    Catalog[Static contracts + dynamic workflows]
+    Context[Session / tab context and queues]
+    Sidepanel[Built-in assistant sidepanel]
+    Browser[Chrome APIs / CDP / page scripts]
+  end
 
-    subgraph "Chrome Extension Layer"
-        J[Background Script]
-        K[Content Scripts]
-        L[Popup Interface]
-        M[Offscreen Documents]
-    end
-
-    subgraph "Browser APIs Layer"
-        N[Chrome APIs]
-        O[Web APIs]
-        P[Native Messaging]
-    end
-
-    subgraph "AI Processing Layer"
-        Q[Semantic Engine]
-        R[Vector Database]
-        S[SIMD Math Engine]
-        T[Web Workers]
-    end
-
-    A --> D
-    B --> D
-    C --> D
-    D --> E
-    E --> F
-    F --> G
-    G --> H
-    H --> P
-    P --> J
-    J --> K
-    J --> L
-    J --> M
-    J --> N
-    J --> O
-    J --> Q
-    Q --> R
-    Q --> S
-    Q --> T
+  Codex --> HTTP
+  Claude --> HTTP
+  Other --> HTTP
+  Other --> STDIO
+  STDIO --> HTTP
+  HTTP --> Security --> Registry --> MCP
+  MCP --> NativeHost --> Background
+  Background --> Catalog
+  Background --> Context
+  Background --> Browser
+  Sidepanel --> AgentAPI --> AgentRuntime
+  AgentRuntime --> HTTP
 ```
 
-## 🔧 Component Details
+## MCP Protocol Layer
 
-### 1. Native Server (`app/native-server/`)
+### Transports
 
-**Purpose**: MCP protocol implementation and native messaging bridge
+- Recommended endpoint: `POST /mcp` over Streamable HTTP.
+- Compatibility endpoints: `GET /sse` and `/messages` for legacy SSE clients.
+- STDIO: `mcp-server-stdio.js` proxies to the same HTTP MCP service instead of duplicating browser tool logic.
+- Each HTTP/SSE session owns a separate MCP Server and transport, so clients do not share connection state.
 
-**Key Components**:
+### Tool Contracts
 
-- **Fastify HTTP Server**: Handles MCP protocol over HTTP/SSE
-- **Native Messaging Host**: Communicates with Chrome extension
-- **Session Management**: Manages multiple MCP client sessions
-- **Tool Registry**: Routes tool calls to Chrome extension
+`packages/shared/src/tools.ts` is the main source of truth for the 41 static tools. It owns:
 
-**Technologies**:
+- `name`, `description`, and strict input schemas
+- read-only, destructive, idempotent, and open-world `annotations`
+- English and Chinese search terms and aliases
+- `outputSchema` for tools with stable result objects
 
-- TypeScript + Fastify
-- MCP SDK (@modelcontextprotocol/sdk)
-- Native messaging protocol
+The Native Server, extension execution layer, STDIO profiles, and tests consume this contract to reduce drift.
 
-### 2. Chrome Extension (`app/chrome-extension/`)
+### Result Compatibility
 
-**Purpose**: Browser automation and AI-powered content analysis
+Stable object results expose both:
 
-**Key Components**:
+- `content`: text or image content for older clients.
+- `structuredContent`: object data for modern MCP clients.
 
-- **Background Script**: Main orchestrator and tool executor
-- **Content Scripts**: Page interaction and content extraction
-- **Popup Interface**: User configuration and status display
-- **Offscreen Documents**: AI model processing in isolated context
+Only tools with verified stable output declare `outputSchema`. Images, dynamic flows, and shape-variable results continue to use MCP `content` as their primary representation.
 
-**Technologies**:
+### Discovery
 
-- WXT Framework + Vue 3
-- Chrome Extension APIs
-- WebAssembly + SIMD
-- Transformers.js
+- The `full` profile advertises all 41 static tools.
+- The `core` and `search` profiles advertise common tools plus `chrome_search_tools`, `chrome_describe_tool`, and `chrome_call_tool`.
+- Dynamic workflow discovery uses a non-blocking cache owned by each MCP Server instance.
+- Real catalog changes trigger `notifications/tools/list_changed`.
+- A refresh failure preserves the last successful catalog.
 
-### 3. Shared Packages (`packages/`)
+### Cancellation and Progress
 
-#### 3.1 Shared Types (`packages/shared/`)
+The MCP request `AbortSignal` propagates through the Native Server, Native Messaging, extension isolation queues, and cooperative waits. Download, network, and general waits emit throttled monotonic progress and clean up listeners, timers, and temporary capture state when cancelled.
 
-- Tool schemas and type definitions
-- Common interfaces and utilities
-- MCP protocol types
+## Native Server
 
-#### 3.2 WASM SIMD (`packages/wasm-simd/`)
+`app/native-server/` has three responsibilities:
 
-- Rust-based SIMD-optimized math functions
-- WebAssembly compilation with Emscripten
-- 4-8x performance improvement for vector operations
+- MCP transport and session lifecycle.
+- Native Messaging request routing to the Chrome extension.
+- Local-only `/agent/*` APIs, SQLite sessions, and attachment storage for the built-in assistant.
 
-## 🔄 Data Flow
+Important modules:
 
-### Tool Execution Flow
+- `src/server/index.ts`: Fastify, MCP routes, transport creation, and lifecycle.
+- `src/server/mcp-session-registry.ts`: capacity, idle expiry, and transport cleanup.
+- `src/server/mcp-http-security.ts`: Host, Origin, bearer token, and remote-route boundaries.
+- `src/mcp/register-tools.ts`: tool registration, dynamic catalogs, call context, and result adaptation.
+- `src/native-messaging-host.ts`: extension connection, request correlation, cancellation, and progress.
+- `src/agent/`: the built-in assistant, SQLite state, and Codex/Claude engines.
 
-```
-┌─────────────┐    ┌──────────────┐    ┌─────────────────┐    ┌──────────────┐
-│ AI Assistant│    │ Native Server│    │ Chrome Extension│    │ Browser APIs │
-└─────┬───────┘    └──────┬───────┘    └─────────┬───────┘    └──────┬───────┘
-      │                   │                      │                   │
-      │ 1. Tool Call      │                      │                   │
-      ├──────────────────►│                      │                   │
-      │                   │ 2. Native Message   │                   │
-      │                   ├─────────────────────►│                   │
-      │                   │                      │ 3. Execute Tool   │
-      │                   │                      ├──────────────────►│
-      │                   │                      │ 4. API Response   │
-      │                   │                      │◄──────────────────┤
-      │                   │ 5. Tool Result      │                   │
-      │                   │◄─────────────────────┤                   │
-      │ 6. MCP Response   │                      │                   │
-      │◄──────────────────┤                      │                   │
-```
+## Chrome Extension
 
-### AI Processing Flow
+`app/chrome-extension/` is the browser execution boundary:
 
-```
-┌─────────────┐    ┌──────────────┐    ┌─────────────────┐    ┌──────────────┐
-│ Content     │    │ Text Chunker │    │ Semantic Engine │    │ Vector DB    │
-│ Extraction  │    │              │    │                 │    │              │
-└─────┬───────┘    └──────┬───────┘    └─────────┬───────┘    └──────┬───────┘
-      │                   │                      │                   │
-      │ 1. Raw Content    │                      │                   │
-      ├──────────────────►│                      │                   │
-      │                   │ 2. Text Chunks      │                   │
-      │                   ├─────────────────────►│                   │
-      │                   │                      │ 3. Embeddings     │
-      │                   │                      ├──────────────────►│
-      │                   │                      │                   │
-      │                   │ 4. Search Query     │                   │
-      │                   ├─────────────────────►│                   │
-      │                   │                      │ 5. Query Vector   │
-      │                   │                      ├──────────────────►│
-      │                   │                      │ 6. Similar Docs   │
-      │                   │                      │◄──────────────────┤
-      │                   │ 7. Search Results   │                   │
-      │                   │◄─────────────────────┤                   │
-```
+- Background executors call Chrome APIs, CDP, and content scripts.
+- Browser session context isolates the last tab/window by MCP session/client and queues operations for the same session or tab.
+- Content scripts implement DOM access, page interaction, the visual editor, and page-side events.
+- The popup shows connection state, MCP configuration, and local semantic-model cache state.
+- The sidepanel hosts the built-in assistant UI.
 
-## 🧠 AI Integration
+Local semantic search uses Transformers.js, Web Workers, IndexedDB, and WASM SIMD. It is separate from Codex and Claude model execution.
 
-### Semantic Similarity Engine
+## Built-in Assistant
 
-**Architecture**:
+The assistant does not maintain a separate third-party API-key store:
 
-- **Model Support**: BGE-small-en-v1.5, E5-small-v2, Universal Sentence Encoder
-- **Execution Context**: Web Workers for non-blocking processing
-- **Optimization**: SIMD acceleration for vector operations
-- **Caching**: LRU cache for embeddings and tokenization
+- The Codex engine launches the local `codex` CLI and inherits its login, provider, and default model from `~/.codex`.
+- The Claude engine uses `@anthropic-ai/claude-agent-sdk` and inherits the local Claude Code login or supported environment variables.
+- An empty model setting delegates selection to the local CLI/SDK default.
+- Codex models are discovered at runtime through `codex debug models`; Claude uses the latest `fable`, `opus`, `sonnet`, and `haiku` aliases.
+- Project and session settings accept arbitrary model IDs, so the UI catalog is not a hard allowlist.
 
-**Performance Optimizations**:
+Both engines inject this project's Streamable HTTP MCP endpoint, including current token settings, for that execution only. They do not rewrite global user MCP configuration.
 
-```typescript
-// SIMD-accelerated cosine similarity
-const similarity = await simdMath.cosineSimilarity(vecA, vecB);
+## Security Boundaries
 
-// Batch processing for efficiency
-const similarities = await simdMath.batchSimilarity(vectors, query, dimension);
+- The server binds to loopback by default. A tokenless endpoint is intended for local use only.
+- Non-loopback listeners require `CHROME_MCP_AUTH_TOKEN`; wildcard listeners also require `CHROME_MCP_ALLOWED_HOSTS`.
+- MCP routes enforce Host/Origin checks and session capacity/idle limits.
+- `/agent/*` and extension HTTP APIs remain local-only even when remote MCP access is enabled.
+- Claude `bypassPermissions` and Codex `danger-full-access` require explicit configuration; defaults do not bypass permission controls.
 
-// Memory-efficient matrix operations
-const matrix = await simdMath.similarityMatrix(vectorsA, vectorsB, dimension);
-```
+## Verification
 
-### Vector Database (hnswlib-wasm)
+- `pnpm run typecheck`: Shared, Native Server, and Extension type baseline.
+- `pnpm --filter mcp-chrome-community-bridge test`: protocol, session, security, and agent-policy tests.
+- `pnpm smoke:stdio`: STDIO catalog and protocol compatibility.
+- `pnpm smoke:stdio -- --call-health`: real extension version and schema checks.
+- `pnpm smoke:stdio -- --real-browser --verbose`: reversible browser flow against a local fixture.
 
-**Features**:
-
-- **Algorithm**: Hierarchical Navigable Small World (HNSW)
-- **Implementation**: WebAssembly for near-native performance
-- **Persistence**: IndexedDB storage with automatic cleanup
-- **Scalability**: Handles 10,000+ documents efficiently
-
-**Configuration**:
-
-```typescript
-const config: VectorDatabaseConfig = {
-  dimension: 384, // Model embedding dimension
-  maxElements: 10000, // Maximum documents
-  efConstruction: 200, // Build-time accuracy
-  M: 16, // Connectivity parameter
-  efSearch: 100, // Search-time accuracy
-  enableAutoCleanup: true, // Automatic old data removal
-  maxRetentionDays: 30, // Data retention period
-};
-```
-
-## ⚡ Performance Optimizations
-
-### 1. SIMD Acceleration
-
-**Rust Implementation**:
-
-```rust
-use wide::f32x4;
-
-fn cosine_similarity_simd(&self, vec_a: &[f32], vec_b: &[f32]) -> f32 {
-    let len = vec_a.len();
-    let simd_lanes = 4;
-    let simd_len = len - (len % simd_lanes);
-
-    let mut dot_sum_simd = f32x4::ZERO;
-    let mut norm_a_sum_simd = f32x4::ZERO;
-    let mut norm_b_sum_simd = f32x4::ZERO;
-
-    for i in (0..simd_len).step_by(simd_lanes) {
-        let a_chunk = f32x4::new(vec_a[i..i+4].try_into().unwrap());
-        let b_chunk = f32x4::new(vec_b[i..i+4].try_into().unwrap());
-
-        dot_sum_simd = a_chunk.mul_add(b_chunk, dot_sum_simd);
-        norm_a_sum_simd = a_chunk.mul_add(a_chunk, norm_a_sum_simd);
-        norm_b_sum_simd = b_chunk.mul_add(b_chunk, norm_b_sum_simd);
-    }
-
-    // Calculate final similarity
-    let dot_product = dot_sum_simd.reduce_add();
-    let norm_a = norm_a_sum_simd.reduce_add().sqrt();
-    let norm_b = norm_b_sum_simd.reduce_add().sqrt();
-
-    dot_product / (norm_a * norm_b)
-}
-```
-
-### 2. Memory Management
-
-**Strategies**:
-
-- **Object Pooling**: Reuse Float32Array buffers
-- **Lazy Loading**: Load AI models on-demand
-- **Cache Management**: LRU eviction for embeddings
-- **Garbage Collection**: Explicit cleanup of large objects
-
-### 3. Concurrent Processing
-
-**Web Workers**:
-
-- **AI Processing**: Separate worker for model inference
-- **Content Indexing**: Background indexing of tab content
-- **Network Capture**: Parallel request processing
-
-## 🔧 Extension Points
-
-### Adding New Tools
-
-1. **Define Schema** in `packages/shared/src/tools.ts`
-2. **Implement Tool** extending `BaseBrowserToolExecutor`
-3. **Register Tool** in tool index
-4. **Add Tests** for functionality
-
-### Custom AI Models
-
-1. **Model Integration** in `SemanticSimilarityEngine`
-2. **Worker Support** for processing
-3. **Configuration** in model presets
-4. **Performance Testing** with benchmarks
-
-### Protocol Extensions
-
-1. **MCP Extensions** for custom capabilities
-2. **Transport Layers** for different communication methods
-3. **Authentication** for secure connections
-4. **Monitoring** for performance metrics
-
-This architecture enables mcp-chrome-community to deliver high-performance browser automation with advanced AI capabilities while maintaining security and extensibility.
+When adding a tool, update the shared contract first, then add the extension executor and synchronize unit tests, real-browser coverage, and `docs/TOOLS*.md`.

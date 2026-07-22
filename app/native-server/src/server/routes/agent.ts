@@ -95,7 +95,7 @@ export function registerAgentRoutes(fastify: FastifyInstance, options: AgentRout
 
   fastify.get('/agent/engines', async (_request, reply) => {
     try {
-      const engines = chatService.getEngineInfos();
+      const engines = await chatService.getEngineInfos();
       reply.status(HTTP_STATUS.OK).send({ engines });
     } catch (error) {
       fastify.log.error({ err: error }, 'Failed to list agent engines');

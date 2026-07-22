@@ -153,6 +153,7 @@
     <AgentSessionSettingsPanel
       :open="sessionSettingsOpen"
       :session="sessions.selectedSession.value"
+      :engines="server.engines.value"
       :management-info="currentManagementInfo"
       :is-loading="sessionSettingsLoading"
       :is-saving="sessionSettingsSaving"
@@ -231,12 +232,9 @@ const isSavingPreference = ref(false);
 function getNormalizedModel(): string {
   const trimmedModel = model.value.trim();
   if (!trimmedModel) return '';
-  // No CLI selected = don't override model, let server use default
+  // No CLI selected = don't override model, let server use default.
   if (!selectedCli.value) return '';
-  const models = getModelsForCli(selectedCli.value);
-  if (models.length === 0) return ''; // Unknown CLI
-  const isValid = models.some((m) => m.id === trimmedModel);
-  return isValid ? trimmedModel : '';
+  return trimmedModel;
 }
 
 /**
@@ -245,8 +243,10 @@ function getNormalizedModel(): string {
  */
 function getNormalizedReasoningEffort(): CodexReasoningEffort {
   if (selectedCli.value !== 'codex') return 'medium';
-  const effectiveModel = getNormalizedModel() || getDefaultModelForCli('codex');
-  const supported = getCodexReasoningEfforts(effectiveModel);
+  const models = getModelsForCli('codex', server.engines.value);
+  const effectiveModel =
+    getNormalizedModel() || getDefaultModelForCli('codex', server.engines.value);
+  const supported = getCodexReasoningEfforts(effectiveModel, models);
   return supported.includes(reasoningEffort.value)
     ? reasoningEffort.value
     : (supported[supported.length - 1] as CodexReasoningEffort);
@@ -411,14 +411,13 @@ const engineDisplayName = computed(() => {
 const currentSessionModel = computed(() => {
   const session = sessions.selectedSession.value;
   if (!session) return '';
-  // Use session model if set, otherwise use default for the engine
-  return session.model || getDefaultModelForCli(session.engineName);
+  return session.model || projects.selectedProject.value?.selectedModel || '';
 });
 
 const currentAvailableModels = computed(() => {
   const session = sessions.selectedSession.value;
   if (!session) return [];
-  return getModelsForCli(session.engineName);
+  return getModelsForCli(session.engineName, server.engines.value);
 });
 
 const currentReasoningEffort = computed(() => {
@@ -430,8 +429,9 @@ const currentReasoningEffort = computed(() => {
 const currentAvailableReasoningEfforts = computed(() => {
   const session = sessions.selectedSession.value;
   if (!session || session.engineName !== 'codex') return [] as readonly CodexReasoningEffort[];
-  const effectiveModel = currentSessionModel.value || getDefaultModelForCli('codex');
-  return getCodexReasoningEfforts(effectiveModel);
+  const effectiveModel =
+    currentSessionModel.value || getDefaultModelForCli('codex', server.engines.value);
+  return getCodexReasoningEfforts(effectiveModel, currentAvailableModels.value);
 });
 
 // Track pending history load with nonce to prevent A→B→A race conditions

@@ -34,16 +34,18 @@
         </option>
       </select>
       <span class="whitespace-nowrap">Model</span>
-      <select
+      <input
         :value="model"
+        list="agent-cli-models"
+        placeholder="CLI default or model ID"
         class="flex-1 border border-slate-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-400"
-        @change="$emit('update:model', ($event.target as HTMLSelectElement).value)"
-      >
-        <option value="">Default</option>
+        @change="$emit('update:model', ($event.target as HTMLInputElement).value)"
+      />
+      <datalist id="agent-cli-models">
         <option v-for="m in availableModels" :key="m.id" :value="m.id">
           {{ m.name }}
         </option>
-      </select>
+      </datalist>
       <!-- CCR option (Claude Code Router) - only shown when Claude CLI is selected -->
       <label
         v-if="showCcrOption"
@@ -101,7 +103,7 @@ const emit = defineEmits<{
 
 // Get available models based on selected CLI
 const availableModels = computed<ModelDefinition[]>(() => {
-  return getModelsForCli(props.selectedCli);
+  return getModelsForCli(props.selectedCli, props.engines);
 });
 
 // Show CCR option only when Claude CLI is selected
@@ -116,7 +118,7 @@ function handleCliChange(event: Event): void {
 
   // Auto-select default model when CLI changes
   if (cli) {
-    const defaultModel = getDefaultModelForCli(cli);
+    const defaultModel = getDefaultModelForCli(cli, props.engines);
     emit('update:model', defaultModel);
   } else {
     emit('update:model', '');

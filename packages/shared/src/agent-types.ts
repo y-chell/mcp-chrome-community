@@ -177,9 +177,24 @@ export interface AgentProject {
   lastActiveAt?: string;
 }
 
+export interface AgentModelInfo {
+  id: string;
+  name: string;
+  description?: string;
+  supportsImages?: boolean;
+  supportedReasoningEfforts?: readonly CodexReasoningEffort[];
+  defaultReasoningEffort?: CodexReasoningEffort;
+}
+
 export interface AgentEngineInfo {
   name: string;
   supportsMcp?: boolean;
+  /** Models discovered from the local runtime, or stable aliases provided by the engine. */
+  models?: AgentModelInfo[];
+  /** Empty means the engine should use its own configured default model. */
+  defaultModel?: string;
+  modelSource?: 'runtime' | 'aliases' | 'fallback';
+  authMode?: 'local-cli';
 }
 
 // ============================================================
@@ -329,31 +344,38 @@ export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-ac
 
 /**
  * Reasoning effort for Codex models.
- * - low/medium/high: supported by all models
- * - xhigh: only supported by gpt-5.2 and gpt-5.1-codex-max
+ * The available values are discovered per model from the local Codex CLI.
  */
-export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+export type CodexReasoningEffort =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+  | 'ultra';
 
 /**
  * Configuration options for Codex Engine.
  * These can be overridden per-session via session settings.
  */
 export interface CodexEngineConfig {
-  /** Enable apply_patch tool for file modifications. Default: true */
+  /** @deprecated Retained for stored-config compatibility; current Codex chooses its native tools. */
   includeApplyPatchTool: boolean;
-  /** Enable plan tool for task planning. Default: true */
+  /** @deprecated Retained for stored-config compatibility; current Codex chooses its native tools. */
   includePlanTool: boolean;
   /** Enable web search capability. Default: true */
   enableWebSearch: boolean;
-  /** Use experimental streamable shell tool. Default: true */
+  /** @deprecated Retained for stored-config compatibility; current Codex chooses its shell tool. */
   useStreamableShell: boolean;
   /** Sandbox mode for command execution. Default: 'workspace-write' */
   sandboxMode: CodexSandboxMode;
   /** Explicitly disable Codex approvals and sandboxing. Default: false */
   dangerouslyBypassApprovalsAndSandbox: boolean;
-  /** Maximum number of turns. Default: 20 */
+  /** @deprecated Current Codex CLI no longer exposes this per-run config key. */
   maxTurns: number;
-  /** Maximum thinking tokens. Default: 4096 */
+  /** @deprecated Current Codex CLI uses model reasoning effort instead. */
   maxThinkingTokens: number;
   /** Reasoning effort for supported models. Default: 'medium' */
   reasoningEffort: CodexReasoningEffort;

@@ -20,7 +20,7 @@
 
 ## 🎯 什么是 mcp-chrome-community？
 
-mcp-chrome-community 是一个基于chrome插件的 **模型上下文协议 (MCP) 服务器**，它将您的 Chrome 浏览器功能暴露给 Claude 等 AI 助手，实现复杂的浏览器自动化、内容分析和语义搜索等。与传统的浏览器自动化工具（如playwright）不同，**mcp-chrome-community**直接使用您日常使用的chrome浏览器，基于现有的用户习惯和配置、登录态，让各种大模型或者各种chatbot都可以接管你的浏览器，真正成为你的日常助手
+mcp-chrome-community 是一个基于 Chrome 扩展和本地 Native Server 的 **模型上下文协议 (MCP) 浏览器服务器**。它把当前 Chrome 的窗口、标签页、登录状态和浏览器能力暴露给 Codex、Claude Code 及其他现代 MCP 客户端。与另起浏览器进程的自动化方案不同，本项目直接操作用户正在使用的 Chrome。
 
 ## ✨ 功能亮点补充
 
@@ -38,7 +38,7 @@ mcp-chrome-community 是一个基于chrome插件的 **模型上下文协议 (MCP
 - 🏎 **跨标签页** 跨标签页的上下文
 - 🧠 **语义搜索**：内置向量数据库和本地小模型，智能发现浏览器标签页内容
 - 🔍 **智能内容分析**：AI 驱动的文本提取和相似度匹配
-- 🌐 **35+ 工具**：支持截图、网络监控、交互操作、书签管理、浏览历史、等待断言、调试证据、上传下载、标签组和录制回放等工具
+- 🌐 **41 个静态工具**：支持截图、网络监控、交互操作、书签管理、浏览历史、等待断言、调试证据、上传下载、标签组和录制回放等工具
 - 🚀 **SIMD 加速 AI**：自定义 WebAssembly SIMD 优化，向量运算速度提升 4-8 倍
 
 ## ✅ 当前已具备的关键能力
@@ -50,6 +50,28 @@ mcp-chrome-community 是一个基于chrome插件的 **模型上下文协议 (MCP
 - 网络和文件：`chrome_network_capture`、`chrome_network_request`、`chrome_upload_file`、`chrome_get_upload_status`、`chrome_handle_download`，支持抓包、请求重放、上传状态、拖拽上传和下载状态查询。
 - 浏览器数据：`chrome_history`、`chrome_bookmark_*`、`chrome_tab_group`、`chrome_clipboard`，覆盖历史记录、书签、标签组和剪贴板。
 - 版本和真实浏览器测试：`chrome_health` 能确认扩展版本、bridge 版本、schema hash、工具数量和当前浏览器状态；真实浏览器测试会覆盖表单、异步更新、console、新标签、剪贴板、拖拽、标签组等场景。
+
+## 🔌 现代 MCP 协议能力
+
+- 使用 `@modelcontextprotocol/sdk ^1.29.0`，推荐 Streamable HTTP，同时保留 STDIO 和旧 SSE 客户端兼容。
+- 对象型工具结果同时返回 legacy `content` 和现代 `structuredContent`；稳定结果声明 `outputSchema`。
+- 工具契约包含严格输入 Schema 和只读、破坏性、幂等等 `annotations`。
+- 动态工作流目录采用非阻塞缓存，并在真实变化后发送 `notifications/tools/list_changed`。
+- 取消信号和进度通知可贯穿 MCP、Native Messaging、扩展队列及协作式等待工具。
+- STDIO 可使用 `full`、`core`、`search` 三种工具目录；紧凑目录仍可通过搜索、描述和代理调用访问隐藏工具。
+- HTTP 层支持 Host/Origin 校验、可选 Bearer token、会话容量限制和空闲清理；远程监听必须显式配置安全边界。
+
+## 🤖 内置智能助手
+
+扩展侧边栏里的智能助手使用本机开发代理，不是另一套需要在扩展里填写 API key 的聊天服务：
+
+- Codex：启动本机 `codex` CLI，沿用 `~/.codex` 中的登录、provider 和默认模型。
+- Claude：通过最新版 Claude Agent SDK 调用本机 Claude Code 登录或相关环境变量。
+- 模型留空时跟随本机 CLI/SDK 默认值，避免扩展内置型号随时间过期。
+- Codex 模型和推理档位通过 `codex debug models` 实时发现；Claude 使用 `fable`、`opus`、`sonnet`、`haiku` 最新别名。
+- 项目和会话设置支持直接填写任意模型 ID，列表只是建议项，不再是白名单。
+
+助手会为每次执行注入本项目的本地 Streamable HTTP MCP 地址，不改写 Codex 或 Claude Code 的全局 MCP 配置。助手会话、消息和附件保存在本机 Native Server 数据目录。
 
 ## 🆚 与同类项目对比
 
@@ -71,6 +93,7 @@ mcp-chrome-community 是一个基于chrome插件的 **模型上下文协议 (MCP
 - CI 和 Release 目前用 Node.js 24
 - Node.js 25 可能能跑，但现在还没进测试矩阵
 - Chrome/Chromium 浏览器
+- 使用内置智能助手时，至少安装并登录 `codex` 或 Claude Code；只使用外部 MCP 客户端时不需要
 
 ### 安装步骤
 
@@ -367,7 +390,7 @@ GenericAgent 里适合浏览器自动化的部分已经先合进来了：紧凑�
 - 录制与回放从“能跑”补到“稳定可复用”。
 - 自动任务从“单次执行”补到“可发布、可调试、可定时”。
 - 增强浏览器支持：先把 Chrome / Edge 稳住，再评估 Firefox。
-- 身份认证和工具权限分级。
+- 继续细化高风险浏览器工具的权限分级和审计信息。
 
 ### 最后再考虑 Windows 桌面级控制
 
@@ -391,3 +414,4 @@ GenericAgent 里适合浏览器自动化的部分已经先合进来了：紧凑�
 - [架构设计](docs/ARCHITECTURE_zh.md) - 详细的技术架构说明
 - [工具列表](docs/TOOLS_zh.md) - 完整的工具 API 文档
 - [故障排除](docs/TROUBLESHOOTING_zh.md) - 常见问题解决方案
+- [MCP 配置](docs/mcp-cli-config.md) - Codex、Claude Code、鉴权和会话配置

@@ -1,5 +1,5 @@
 import type { AgentAttachment, RealtimeEvent } from '../types';
-import type { CodexEngineConfig } from 'chrome-mcp-shared';
+import type { AgentEngineInfo, CodexEngineConfig } from 'chrome-mcp-shared';
 
 export interface EngineInitOptions {
   sessionId: string;
@@ -120,6 +120,8 @@ export interface AgentEngine {
    * Whether this engine can act as an MCP client natively.
    */
   supportsMcp?: boolean;
+  /** Runtime capabilities shown by the sidepanel. */
+  getInfo?(): AgentEngineInfo | Promise<AgentEngineInfo>;
   initializeAndRun(options: EngineInitOptions, ctx: EngineExecutionContext): Promise<void>;
 }
 
