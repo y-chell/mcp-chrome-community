@@ -30,7 +30,7 @@ jobs:
           node-version: '24'
 
       - name: Setup pnpm
-        run: npm install --global pnpm@10.28.2
+        run: npm install --global pnpm@8.15.9
 
       - name: Resolve release metadata
         id: meta
@@ -56,7 +56,7 @@ jobs:
           echo "native_version=${native_version}" >> "${GITHUB_OUTPUT}"
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Validate release extension key
         env:

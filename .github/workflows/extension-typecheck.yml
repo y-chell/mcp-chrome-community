@@ -24,7 +24,7 @@ jobs:
           node-version: '24'
 
       - name: Setup pnpm
-        run: npm install --global pnpm@10.28.2
+        run: npm install --global pnpm@8.15.9
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
