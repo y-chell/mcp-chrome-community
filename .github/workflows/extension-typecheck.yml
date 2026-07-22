@@ -30,6 +30,8 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Prepare extension types
+        env:
+          ALLOW_UNSTABLE_EXTENSION_ID: '1'
         run: pnpm --filter mcp-chrome-community-extension exec wxt prepare
 
       - name: Build shared package
