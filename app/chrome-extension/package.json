@@ -3,7 +3,7 @@
   "description": "Chrome extension for mcp-chrome-community",
   "author": "mcp-chrome-community",
   "private": true,
-  "version": "1.0.15",
+  "version": "1.0.16",
   "type": "module",
   "repository": {
     "type": "git",

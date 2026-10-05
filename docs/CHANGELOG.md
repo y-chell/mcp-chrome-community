@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.0.16] - 2026-10-05
+
+### Fixed
+
+- **Injected async functions returned null results**: raised the extension build target from `es2015` to `es2020` (`wxt.config.ts`). Functions passed to `chrome.scripting.executeScript({ func })` are serialized into the page; below es2017 esbuild rewrote `async` into the bundle-level `__async` helper, which does not exist in the page scope, so the injected call threw and `executeScript` returned `null`. This broke `chrome.scripting`-based async call sites (clipboard page fallback, file-upload wait path, the scripting fallback of `chrome_javascript`). A regression test (`tests/build-target.test.ts`) now guards the target, and the `wait-for.ts` comment was corrected: predicates stay synchronous by design (cheap per-poll snapshot), not because of an API limitation — `chrome.scripting.executeScript` does await a promise returned by the injected function
+
 ## [v1.0.15] - 2026-10-05
 
 ### Changed
