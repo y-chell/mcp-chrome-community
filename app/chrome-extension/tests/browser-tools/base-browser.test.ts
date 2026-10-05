@@ -69,3 +69,47 @@ describe('BaseBrowserToolExecutor ref frame routing', () => {
     );
   });
 });
+
+describe('BaseBrowserToolExecutor content script injection', () => {
+  class InjectingTool extends BaseBrowserToolExecutor {
+    name = 'chrome_read_page';
+
+    async execute() {
+      return { content: [], isError: false };
+    }
+
+    async inject(files: string[], frameIds?: number[]) {
+      return (
+        this as unknown as {
+          injectContentScript: (
+            tabId: number,
+            files: string[],
+            injectImmediately: boolean,
+            world: 'ISOLATED',
+            allFrames: boolean,
+            frameIds?: number[],
+          ) => Promise<void>;
+        }
+      ).injectContentScript(654, files, false, 'ISOLATED', false, frameIds);
+    }
+  }
+
+  it('injects a second helper even when the tool ping is already answered', async () => {
+    const executeScriptMock = vi.fn().mockResolvedValue([]);
+    // A previously injected helper (for example accessibility-tree-helper) answers the ping of
+    // the tool that is calling now. Injection must still happen: this call may need a different
+    // helper file than the one already in the page.
+    const sendMessageMock = vi.fn().mockResolvedValue({ status: 'pong' });
+    (globalThis.chrome as any).scripting = { executeScript: executeScriptMock };
+    (chrome.tabs as any).sendMessage = sendMessageMock;
+
+    await new InjectingTool().inject(['inject-scripts/interactive-elements-helper.js']);
+
+    expect(executeScriptMock).toHaveBeenCalledTimes(1);
+    expect(executeScriptMock.mock.calls[0][0]).toMatchObject({
+      files: ['inject-scripts/interactive-elements-helper.js'],
+      world: 'ISOLATED',
+    });
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+});

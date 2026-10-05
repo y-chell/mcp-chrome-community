@@ -3,8 +3,6 @@ import type { ToolResult } from '@/common/tool-handler';
 import { TIMEOUTS, ERROR_MESSAGES } from '@/common/constants';
 import { getRefTargetFrameId } from '@/utils/ref-target-store';
 
-const PING_TIMEOUT_MS = 300;
-
 /**
  * Base class for browser tool executors
  */
@@ -25,39 +23,11 @@ export abstract class BaseBrowserToolExecutor implements ToolExecutor {
   ): Promise<void> {
     console.log(`Injecting ${files.join(', ')} into tab ${tabId}`);
 
-    // check if script is already injected
-    try {
-      const pingFrameId = frameIds?.[0];
-      const response = await Promise.race([
-        typeof pingFrameId === 'number'
-          ? chrome.tabs.sendMessage(
-              tabId,
-              { action: `${this.name}_ping` },
-              { frameId: pingFrameId },
-            )
-          : chrome.tabs.sendMessage(tabId, { action: `${this.name}_ping` }),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`${this.name} Ping action to tab ${tabId} timed out`)),
-            PING_TIMEOUT_MS,
-          ),
-        ),
-      ]);
-
-      if (response && response.status === 'pong') {
-        console.log(
-          `pong received for action '${this.name}' in tab ${tabId}. Assuming script is active.`,
-        );
-        return;
-      } else {
-        console.warn(`Unexpected ping response in tab ${tabId}:`, response);
-      }
-    } catch (error) {
-      console.error(
-        `ping content script failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
+    // No "already injected?" probe: every helper carries its own __*_INITIALIZED__ guard, so
+    // re-injecting a file is a no-op. The old probe keyed on `${this.name}_ping`, which made a
+    // tool that needs a SECOND helper skip that injection whenever the first helper answered the
+    // ping (chrome_read_page + interactive-elements-helper), and it also paid a 300ms race on
+    // the first injection into a tab.
     try {
       const target: { tabId: number; allFrames?: boolean; frameIds?: number[] } = { tabId };
       if (frameIds && frameIds.length > 0) {

@@ -390,9 +390,12 @@ abstract class WaitToolsBase extends BaseBrowserToolExecutor {
         const injected = await chrome.scripting.executeScript({
           target: { tabId: tab.id!, frameIds } as chrome.scripting.InjectionTarget,
           world: 'MAIN',
-          func: async (predicate: string) => {
+          // chrome.scripting.executeScript never awaits a promise returned by the injected
+          // function, so an async function comes back as result === null and the predicate looks
+          // like it never matched. This function must stay synchronous.
+          func: (predicate: string) => {
+            const source = String(predicate || '').trim();
             try {
-              const source = String(predicate || '').trim();
               let value: unknown;
 
               if (
@@ -408,14 +411,22 @@ abstract class WaitToolsBase extends BaseBrowserToolExecutor {
               }
 
               if (value && typeof (value as Promise<unknown>).then === 'function') {
-                value = await (value as Promise<unknown>);
+                return {
+                  success: false,
+                  error:
+                    'JavaScript predicates must be synchronous: the predicate returned a Promise.',
+                };
               }
 
               return { success: true, value };
             } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
               return {
                 success: false,
-                error: error instanceof Error ? error.message : String(error),
+                error:
+                  error instanceof SyntaxError && /\bawait\b/.test(source)
+                    ? `JavaScript predicates must be synchronous and cannot await: ${message}`
+                    : message,
               };
             }
           },

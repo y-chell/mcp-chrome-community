@@ -283,6 +283,7 @@ class ReadPageTool extends BaseBrowserToolExecutor {
       }
 
       // Fallback path: try get_interactive_elements once
+      let fallbackError: string | null = null;
       try {
         await this.injectContentScript(tab.id, ['inject-scripts/interactive-elements-helper.js']);
         const fallback = await this.sendMessageToTab(tab.id, {
@@ -319,14 +320,17 @@ class ReadPageTool extends BaseBrowserToolExecutor {
             isError: false,
           };
         }
+
+        fallbackError = 'fallback returned an unexpected payload';
       } catch (fallbackErr) {
         console.warn('read_page fallback failed:', fallbackErr);
+        fallbackError = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
       }
 
       // If we reach here, both tree (usable) and fallback failed
       return createErrorResponse(
         treeOk
-          ? 'Accessibility tree is too sparse and fallback failed'
+          ? `Accessibility tree is too sparse and fallback failed${fallbackError ? `: ${fallbackError}` : ''}`
           : frameErrors[0] || 'Failed to generate accessibility tree and fallback failed',
       );
     } catch (error) {

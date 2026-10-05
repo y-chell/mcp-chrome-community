@@ -139,6 +139,38 @@ describe('wait_for and assert tools', () => {
     });
   });
 
+  it('evaluates javascript predicates synchronously', async () => {
+    (chrome.scripting.executeScript as any).mockResolvedValue([
+      { result: { success: true, value: true } },
+    ]);
+
+    await waitForTool.execute({
+      tabId: 21,
+      timeoutMs: 0,
+      condition: { kind: 'javascript', predicate: 'document.readyState === "complete"' },
+    } as any);
+
+    // chrome.scripting.executeScript returns null for a promise-returning injected function, so
+    // an async evaluator silently loses every predicate result.
+    const injected = (chrome.scripting.executeScript as any).mock.calls[0][0].func;
+    expect(injected.constructor.name).not.toBe('AsyncFunction');
+
+    expect(injected('1 + 1 === 2')).toEqual({ success: true, value: true });
+    expect(injected('(() => "ready")()')).toEqual({ success: true, value: 'ready' });
+
+    const promisePredicate = injected('Promise.resolve(true)');
+    expect(promisePredicate.success).toBe(false);
+    expect(String(promisePredicate.error)).toMatch(/synchronous/i);
+
+    const asyncPredicate = injected('async () => true');
+    expect(asyncPredicate.success).toBe(false);
+    expect(String(asyncPredicate.error)).toMatch(/synchronous/i);
+
+    const awaitedPredicate = injected('await Promise.resolve(1)');
+    expect(awaitedPredicate.success).toBe(false);
+    expect(String(awaitedPredicate.error)).toMatch(/synchronous and cannot await/i);
+  });
+
   it('returns a clear assertion failure', async () => {
     const result = await assertTool.execute({
       tabId: 21,
