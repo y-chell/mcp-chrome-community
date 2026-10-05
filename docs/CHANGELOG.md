@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.0.14] - 2026-10-05
+
+### Fixed
+
+- **`chrome_wait_for` / `chrome_assert` with `kind: "javascript"`**: the injected predicate evaluator was an `async` function, and `chrome.scripting.executeScript` never awaits a promise returned by the injected function, so every predicate came back as `null` and the condition always timed out with `last observed: null`. The evaluator is synchronous again, and predicates that return a promise or use `await` now fail with an explicit "must be synchronous" message instead of being reported as "no match"
+- **`chrome_read_page` on sparse pages**: the sparse-tree fallback could never inject its helper, because `injectContentScript` decided "already injected" from a `${tool.name}_ping` probe that any previously injected helper answered — `chrome_read_page` injects the accessibility-tree helper first, which answers `chrome_read_page_ping`, so the interactive-elements helper was skipped and the tool always failed with `Accessibility tree is too sparse and fallback failed`. Sparse pages now return the interactive-element fallback, and the fallback's real error is included in the message when it does fail
+
+### Changed
+
+- **Content script injection**: dropped the tool-name ping probe entirely. Every injected helper carries its own `__*_INITIALIZED__` guard, so re-injecting a file is a no-op; removing the probe also removes a 300ms race on the first injection into a tab
+
 ## [v1.0.13] - 2026-10-05
 
 ### Changed
