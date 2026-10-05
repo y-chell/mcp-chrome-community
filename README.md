@@ -60,7 +60,7 @@ mcp-chrome-community is a **Model Context Protocol (MCP) browser server** built 
 - Tool contracts include strict input schemas and read-only, destructive, idempotent, and related `annotations`.
 - Dynamic workflow discovery uses a non-blocking cache and emits `notifications/tools/list_changed` after real catalog changes.
 - Cancellation and progress propagate through MCP, Native Messaging, extension queues, and cooperative wait tools.
-- STDIO supports `full`, `core`, and `search` catalogs. Compact profiles can still discover, inspect, and proxy-call hidden tools.
+- STDIO and HTTP support `full`, `core`, and `search` catalogs (default `core`). Compact profiles can still discover, inspect, and proxy-call hidden tools.
 - The HTTP layer supports Host/Origin validation, optional bearer authentication, session limits, and idle cleanup. Remote listeners require explicit security configuration.
 
 ## 🤖 Built-in Assistant
@@ -209,7 +209,7 @@ Example final path:
 }
 ```
 
-STDIO supports `CHROME_MCP_TOOL_PROFILE` to control how many tools are advertised to the client:
+`CHROME_MCP_TOOL_PROFILE` controls how many tools are advertised to the client (STDIO and HTTP). HTTP clients can also pick a profile per connection with a query parameter, e.g. `http://127.0.0.1:12306/mcp?profile=full`:
 
 - `full`: advertises every tool (backward-compatible with older configs).
 - `core`: **default**. Advertises 12 common browser tools plus 3 catalog tools. Recommended for routine Codex and Claude Code browsing.

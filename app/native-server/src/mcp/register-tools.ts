@@ -13,6 +13,7 @@ import { NativeMessageType, TOOL_SCHEMAS } from 'chrome-mcp-shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServerContext } from './mcp-server';
 import { LONG_TOOL_CALL_TIMEOUT_MS, getToolCallTimeoutMs } from './tool-timeouts';
+import { getExposedToolSchemas, handleProfileMetaTool, resolveToolProfile } from './tool-profile';
 
 const HEALTH_TOOL_NAME = 'chrome_health';
 
@@ -182,7 +183,7 @@ function buildToolCallContext(
   extra: { sessionId?: string; requestId?: string | number },
 ): ToolCallContext {
   return {
-    ...baseContext,
+    transport: baseContext.transport,
     sessionId: extra.sessionId || baseContext.sessionId,
     requestId:
       typeof extra.requestId === 'string' || typeof extra.requestId === 'number'
@@ -324,10 +325,12 @@ function appendLegacyStructuredContent(result: CallToolResult): CallToolResult {
 export const setupTools = (server: Server, context: McpServerContext = {}) => {
   server.registerCapabilities({ tools: { listChanged: true } });
   const dynamicFlowDirectory = createDynamicFlowDirectory(server);
+  const toolProfile = context.toolProfile ?? resolveToolProfile().profile;
+  const exposedToolSchemas = getExposedToolSchemas(toolProfile);
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     void dynamicFlowDirectory.refresh();
-    return { tools: [...TOOL_SCHEMAS, ...dynamicFlowDirectory.listTools()] };
+    return { tools: [...exposedToolSchemas, ...dynamicFlowDirectory.listTools()] };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
@@ -340,13 +343,15 @@ export const setupTools = (server: Server, context: McpServerContext = {}) => {
 
     // Don't block dispatch on the client acknowledging a progress notification.
     void reportProgress?.({ progress: 0, total: 100, message: 'Dispatching browser tool' });
-    const result = await handleToolCall(
-      request.params.name,
-      request.params.arguments || {},
-      buildToolCallContext(context, extra),
-      dynamicFlowDirectory.resolve,
-      execution,
-    );
+    const callContext = buildToolCallContext(context, extra);
+    const invokeBrowserTool = (toolName: string, toolArgs: Record<string, unknown>) =>
+      handleToolCall(toolName, toolArgs, callContext, dynamicFlowDirectory.resolve, execution);
+    const name = request.params.name;
+    const args = request.params.arguments || {};
+    // Hidden tools stay callable by name; meta tools let the model discover them on demand.
+    const result =
+      (await handleProfileMetaTool(name, args, toolProfile, invokeBrowserTool)) ??
+      (await invokeBrowserTool(name, args));
     if (!result.isError) {
       await reportProgress?.({ progress: 100, total: 100, message: 'Browser tool completed' });
     }

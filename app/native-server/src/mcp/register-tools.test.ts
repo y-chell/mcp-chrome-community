@@ -14,7 +14,7 @@ type RequestHandler = (request?: any, extra?: any) => Promise<any>;
 
 const sendRequest = nativeMessagingHostInstance.sendRequestToExtensionAndWait as jest.Mock;
 
-function createServerHarness() {
+function createServerHarness(context: Record<string, unknown> = { toolProfile: 'full' }) {
   const handlers: RequestHandler[] = [];
   const server = {
     registerCapabilities: jest.fn(),
@@ -24,7 +24,7 @@ function createServerHarness() {
     sendToolListChanged: jest.fn(async () => undefined),
   };
 
-  setupTools(server as any);
+  setupTools(server as any, context as any);
 
   expect(server.registerCapabilities).toHaveBeenCalledWith({ tools: { listChanged: true } });
 
@@ -433,5 +433,46 @@ describe('tool cancellation and progress forwarding', () => {
 
     expect(result).toEqual({ content: [{ type: 'text', text: 'done' }] });
     expect(sendNotification).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('tool profile over HTTP', () => {
+  test('core profile lists meta tools plus core browser tools only', async () => {
+    sendRequest.mockResolvedValue({ status: 'success', items: [] });
+    const { listTools } = createServerHarness({ toolProfile: 'core' });
+
+    const { tools } = await listTools();
+    const names = tools.map((tool: { name: string }) => tool.name);
+
+    expect(names).toEqual(expect.arrayContaining(['chrome_search_tools', 'chrome_call_tool']));
+    expect(tools.length).toBeLessThan(TOOL_SCHEMAS.length);
+  });
+
+  test('chrome_call_tool forwards hidden tools to the extension', async () => {
+    const hidden = TOOL_SCHEMAS.find((tool) => tool.name === 'chrome_bookmark_search');
+    expect(hidden).toBeDefined();
+    sendRequest.mockResolvedValue({
+      status: 'success',
+      data: { content: [{ type: 'text', text: 'ok' }] },
+    });
+    const { callTool } = createServerHarness({ toolProfile: 'core' });
+
+    const result = await callTool(
+      {
+        params: {
+          name: 'chrome_call_tool',
+          arguments: { name: hidden!.name, args: { query: 'x' } },
+        },
+      },
+      {},
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(sendRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ name: hidden!.name }),
+      NativeMessageType.CALL_TOOL,
+      expect.any(Number),
+      expect.anything(),
+    );
   });
 });

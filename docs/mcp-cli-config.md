@@ -42,6 +42,11 @@ codex mcp add mcp-chrome-community --url http://192.168.1.20:12306/mcp --bearer-
 claude mcp add --transport http --scope user mcp-chrome-community http://127.0.0.1:12306/mcp
 ```
 
+The HTTP endpoint advertises the `core` tool profile by default. Append `?profile=full` (or
+`?profile=search`) to the URL to choose a different catalog for that client, e.g.
+`http://127.0.0.1:12306/mcp?profile=full`. Hidden tools stay callable through
+`chrome_search_tools` / `chrome_call_tool`.
+
 Claude Code also supports `--header` for a protected HTTP endpoint. Be aware that a literal
 `Authorization` header may be persisted in Claude's MCP configuration; use a client-supported
 secret or environment substitution mechanism when available.

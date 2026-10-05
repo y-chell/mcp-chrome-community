@@ -58,7 +58,7 @@ mcp-chrome-community 是一个基于 Chrome 扩展和本地 Native Server 的 **
 - 工具契约包含严格输入 Schema 和只读、破坏性、幂等等 `annotations`。
 - 动态工作流目录采用非阻塞缓存，并在真实变化后发送 `notifications/tools/list_changed`。
 - 取消信号和进度通知可贯穿 MCP、Native Messaging、扩展队列及协作式等待工具。
-- STDIO 可使用 `full`、`core`、`search` 三种工具目录；紧凑目录仍可通过搜索、描述和代理调用访问隐藏工具。
+- STDIO 和 HTTP 都支持 `full`、`core`、`search` 三种工具目录（默认 `core`）；紧凑目录仍可通过搜索、描述和代理调用访问隐藏工具。
 - HTTP 层支持 Host/Origin 校验、可选 Bearer token、会话容量限制和空闲清理；远程监听必须显式配置安全边界。
 
 ## 🤖 内置智能助手
@@ -201,7 +201,7 @@ mcp-chrome-community-bridge/dist/mcp/mcp-server-stdio.js
 }
 ```
 
-STDIO 支持通过 `CHROME_MCP_TOOL_PROFILE` 控制向客户端公布的工具数量：
+通过 `CHROME_MCP_TOOL_PROFILE` 控制向客户端公布的工具数量（STDIO 和 HTTP 都生效）。HTTP 客户端也可以在地址后加参数按连接选择，例如 `http://127.0.0.1:12306/mcp?profile=full`：
 
 - `full`：公布全部工具，兼容旧配置。
 - `core`：**默认值**。公布 12 个常用浏览器工具和 3 个目录工具，适合 Codex、Claude Code 等日常浏览任务。

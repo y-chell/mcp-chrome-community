@@ -24,6 +24,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { randomUUID } from 'node:crypto';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { createMcpServer } from '../mcp/mcp-server';
+import { resolveToolProfile, type ChromeMcpToolProfile } from '../mcp/tool-profile';
 import { AgentStreamManager } from '../agent/stream-manager';
 import { AgentChatService } from '../agent/chat-service';
 import { CodexEngine } from '../agent/engines/codex';
@@ -72,6 +73,14 @@ function readPositiveIntegerEnv(name: string, fallback: number): number {
     throw new Error(`${name} must be a positive integer.`);
   }
   return value;
+}
+
+/** Optional `?profile=full|core|search` on /mcp or /sse overrides CHROME_MCP_TOOL_PROFILE per connection. */
+function getRequestedToolProfile(query: unknown): ChromeMcpToolProfile | undefined {
+  const raw = (query as Record<string, unknown> | undefined)?.profile;
+  if (typeof raw !== 'string') return undefined;
+  const resolution = resolveToolProfile(raw);
+  return resolution.invalidValue ? undefined : resolution.profile;
 }
 
 function getSingleHeader(value: string | string[] | undefined): string | undefined {
@@ -260,7 +269,7 @@ export class Server {
 
   private setupMcpRoutes(): void {
     // SSE endpoint
-    this.fastify.get('/sse', { preHandler: this.mcpSecurityGuard }, async (_, reply) => {
+    this.fastify.get('/sse', { preHandler: this.mcpSecurityGuard }, async (request, reply) => {
       if (!this.mcpSessions.canAcceptNewSession()) {
         reply.code(HTTP_STATUS.TOO_MANY_REQUESTS).send({
           error: ERROR_MESSAGES.MCP_SESSION_LIMIT_REACHED,
@@ -284,6 +293,7 @@ export class Server {
         const server = createMcpServer({
           sessionId: transport.sessionId,
           transport: 'sse',
+          toolProfile: getRequestedToolProfile(request.query),
         });
         await server.connect(transport);
       } catch (error) {
@@ -370,6 +380,7 @@ export class Server {
           await createMcpServer({
             sessionId: newSessionId,
             transport: 'streamable-http',
+            toolProfile: getRequestedToolProfile(request.query),
           }).connect(transport);
         } else {
           reply.code(HTTP_STATUS.BAD_REQUEST).send({ error: ERROR_MESSAGES.INVALID_MCP_REQUEST });

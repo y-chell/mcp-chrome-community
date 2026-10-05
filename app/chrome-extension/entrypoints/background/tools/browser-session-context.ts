@@ -226,12 +226,12 @@ async function prepareToolArgs(
 
   if (typeof explicitTabId === 'number') {
     await rememberSessionTarget(sessionId, { tabId: explicitTabId }, 'explicit-tab');
-    return { args, bindingBeforeCall: (await getStoredBinding(sessionId)) ?? undefined };
+    return { args, bindingBeforeCall: sessionBindings.get(sessionId) };
   }
 
   if (typeof explicitWindowId === 'number') {
     await rememberSessionTarget(sessionId, { windowId: explicitWindowId }, 'explicit-window');
-    return { args, bindingBeforeCall: (await getStoredBinding(sessionId)) ?? undefined };
+    return { args, bindingBeforeCall: sessionBindings.get(sessionId) };
   }
 
   const binding = await getStoredBinding(sessionId);
@@ -341,7 +341,7 @@ async function finalizeToolCall(
   const closedTabIds = Array.isArray(payload?.closedTabIds)
     ? payload.closedTabIds.filter((id: unknown): id is number => typeof id === 'number')
     : [];
-  const bindingBeforeCall = prepared.bindingBeforeCall || (await getStoredBinding(sessionId));
+  const bindingBeforeCall = prepared.bindingBeforeCall || sessionBindings.get(sessionId);
 
   if (
     toolName === CLOSE_TABS_TOOL &&
@@ -360,6 +360,20 @@ async function finalizeToolCall(
   if (result.isError) return;
 
   const target = extractTargetFromPayload(payload);
+  if (
+    typeof target?.tabId === 'number' &&
+    target.tabId === bindingBeforeCall?.tabId &&
+    sessionBindings.has(sessionId)
+  ) {
+    // Same tab as the validated pre-call binding; tabs.onRemoved clears it if it goes away.
+    sessionBindings.set(sessionId, {
+      tabId: target.tabId,
+      windowId: target.windowId ?? bindingBeforeCall.windowId,
+      updatedAt: Date.now(),
+      source: 'tool-result',
+    });
+    return;
+  }
   if (target?.tabId || target?.windowId) {
     await rememberSessionTarget(sessionId, target, 'tool-result');
     return;

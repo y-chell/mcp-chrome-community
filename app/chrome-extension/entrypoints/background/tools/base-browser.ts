@@ -21,8 +21,6 @@ export abstract class BaseBrowserToolExecutor implements ToolExecutor {
     allFrames: boolean = false,
     frameIds?: number[],
   ): Promise<void> {
-    console.log(`Injecting ${files.join(', ')} into tab ${tabId}`);
-
     // No "already injected?" probe: every helper carries its own __*_INITIALIZED__ guard, so
     // re-injecting a file is a no-op. The old probe keyed on `${this.name}_ping`, which made a
     // tool that needs a SECOND helper skip that injection whenever the first helper answered the
@@ -41,7 +39,6 @@ export abstract class BaseBrowserToolExecutor implements ToolExecutor {
         injectImmediately,
         world,
       } as any);
-      console.log(`'${files.join(', ')}' injection successful for tab ${tabId}`);
     } catch (injectionError) {
       const errorMessage =
         injectionError instanceof Error ? injectionError.message : String(injectionError);
