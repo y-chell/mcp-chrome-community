@@ -332,6 +332,13 @@ export function createMcpHttpSecurityGuard(
       }
     }
 
+    // Local agents talk to the bridge over loopback. Host/Origin/token checks above already
+    // block browser pages and remote callers, so throttling loopback only slows down
+    // legitimate high-frequency automation (it used to surface as sudden 429 failures).
+    if (isLoopbackRemoteAddress(request.socket?.remoteAddress)) {
+      return;
+    }
+
     const rateLimitResult = limiter.consume(authenticatedRateLimitKey ?? request.ip, now());
     if (!rateLimitResult.allowed) {
       reply.header('Retry-After', String(rateLimitResult.retryAfterSeconds));

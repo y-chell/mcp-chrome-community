@@ -48,7 +48,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 if (toolProfileResolution.invalidValue) {
   console.error(
-    `Invalid CHROME_MCP_TOOL_PROFILE="${toolProfileResolution.invalidValue}"; using "full". Expected full, core, or search.`,
+    `Invalid CHROME_MCP_TOOL_PROFILE="${toolProfileResolution.invalidValue}"; using "core". Expected full, core, or search.`,
   );
 }
 

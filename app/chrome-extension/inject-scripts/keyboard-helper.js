@@ -185,8 +185,7 @@ if (window.__KEYBOARD_HELPER_INITIALIZED__) {
       const element = targetElement || document.activeElement || document.body;
 
       if (element !== document.activeElement && typeof element.focus === 'function') {
-        element.focus();
-        await new Promise((resolve) => setTimeout(resolve, 50)); // Small delay for focus
+        element.focus(); // focus() is synchronous; no settle delay needed
       }
 
       const keyCombinations = keysSequenceString

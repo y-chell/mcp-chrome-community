@@ -48,8 +48,8 @@ if (window.__CLICK_HELPER_INITIALIZED__) {
         }
 
         element = target;
+        // behavior:'auto' scrolls synchronously; getBoundingClientRect below forces layout.
         element.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'center' });
-        await new Promise((resolve) => setTimeout(resolve, 80));
 
         const rect = element.getBoundingClientRect();
         clickX = rect.left + rect.width / 2;
@@ -147,7 +147,6 @@ if (window.__CLICK_HELPER_INITIALIZED__) {
 
         // First sroll so that the element is in view, then check visibility.
         element.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'center' });
-        await new Promise((resolve) => setTimeout(resolve, 100));
         elementInfo.isVisible = isElementVisible(element);
         if (!elementInfo.isVisible) {
           return {

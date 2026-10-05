@@ -4,6 +4,10 @@ import { TOOL_NAMES, TOOL_SCHEMAS } from 'chrome-mcp-shared';
 export const CHROME_MCP_TOOL_PROFILE_ENV = 'CHROME_MCP_TOOL_PROFILE';
 
 export type ChromeMcpToolProfile = 'full' | 'core' | 'search';
+
+// `core` keeps the advertised catalog small (less context for the agent, fewer wrong tool
+// picks); every other tool stays reachable through chrome_search_tools / chrome_call_tool.
+export const DEFAULT_TOOL_PROFILE: ChromeMcpToolProfile = 'core';
 export type BrowserToolInvoker = (
   name: string,
   args: Record<string, unknown>,
@@ -183,11 +187,11 @@ export function resolveToolProfile(
   value = process.env[CHROME_MCP_TOOL_PROFILE_ENV],
 ): ToolProfileResolution {
   const normalized = value?.trim().toLowerCase();
-  if (!normalized) return { profile: 'full' };
+  if (!normalized) return { profile: DEFAULT_TOOL_PROFILE };
   if (normalized === 'full' || normalized === 'core' || normalized === 'search') {
     return { profile: normalized };
   }
-  return { profile: 'full', invalidValue: value };
+  return { profile: DEFAULT_TOOL_PROFILE, invalidValue: value };
 }
 
 export function getExposedToolSchemas(profile: ChromeMcpToolProfile): Tool[] {

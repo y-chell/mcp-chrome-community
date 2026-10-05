@@ -234,7 +234,12 @@ export class NativeMessagingHost {
         if (!pending) return;
 
         this.sendToolCancellation(requestId);
-        pending.reject(new Error(`Request timed out after ${timeoutMs}ms`));
+        pending.reject(
+          new Error(
+            `Request timed out after ${timeoutMs}ms: the Chrome extension did not respond. ` +
+              'Check that the extension is enabled and connected (chrome_health).',
+          ),
+        );
       }, timeoutMs);
 
       const abortListener = options.signal

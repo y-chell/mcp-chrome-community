@@ -12,6 +12,7 @@ import { BRIDGE_VERSION } from '../constant';
 import { NativeMessageType, TOOL_SCHEMAS } from 'chrome-mcp-shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServerContext } from './mcp-server';
+import { LONG_TOOL_CALL_TIMEOUT_MS, getToolCallTimeoutMs } from './tool-timeouts';
 
 const HEALTH_TOOL_NAME = 'chrome_health';
 
@@ -337,7 +338,8 @@ export const setupTools = (server: Server, context: McpServerContext = {}) => {
       onProgress: reportProgress,
     };
 
-    await reportProgress?.({ progress: 0, total: 100, message: 'Dispatching browser tool' });
+    // Don't block dispatch on the client acknowledging a progress notification.
+    void reportProgress?.({ progress: 0, total: 100, message: 'Dispatching browser tool' });
     const result = await handleToolCall(
       request.params.name,
       request.params.arguments || {},
@@ -369,7 +371,7 @@ const handleToolCall = async (
         const proxyRes = await nativeMessagingHostInstance.sendRequestToExtensionAndWait(
           { name: 'record_replay_flow_run', args: flowArgs, context },
           NativeMessageType.CALL_TOOL,
-          120000,
+          LONG_TOOL_CALL_TIMEOUT_MS,
           execution,
         );
         if (proxyRes.status === 'success') return appendLegacyStructuredContent(proxyRes.data);
@@ -396,7 +398,7 @@ const handleToolCall = async (
         context,
       },
       NativeMessageType.CALL_TOOL,
-      120000, // 延长到 120 秒，避免性能分析等长任务超时
+      getToolCallTimeoutMs(name, args),
       execution,
     );
     if (response.status === 'success') {

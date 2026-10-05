@@ -16,6 +16,8 @@ import {
 
 const REMOTE_TOKEN = '0123456789abcdef';
 
+const REMOTE_CLIENT_ADDRESS = '203.0.113.5';
+
 describe('MCP HTTP security configuration', () => {
   test('identifies MCP paths and loopback clients for shared-listener isolation', () => {
     expect(isMcpTransportPath('/mcp')).toBe(true);
@@ -241,19 +243,31 @@ describe('MCP HTTP security guard', () => {
       async () => ({ ok: true }),
     );
 
-    const first = await app.inject({ method: 'POST', url: '/mcp', headers: { host: 'localhost' } });
+    const first = await app.inject({
+      method: 'POST',
+      remoteAddress: REMOTE_CLIENT_ADDRESS,
+      url: '/mcp',
+      headers: { host: 'localhost' },
+    });
     const second = await app.inject({
       method: 'POST',
+      remoteAddress: REMOTE_CLIENT_ADDRESS,
       url: '/mcp',
       headers: { host: 'localhost' },
     });
     const limited = await app.inject({
       method: 'POST',
+      remoteAddress: REMOTE_CLIENT_ADDRESS,
       url: '/mcp',
       headers: { host: 'localhost' },
     });
     now += 60_000;
-    const reset = await app.inject({ method: 'POST', url: '/mcp', headers: { host: 'localhost' } });
+    const reset = await app.inject({
+      method: 'POST',
+      remoteAddress: REMOTE_CLIENT_ADDRESS,
+      url: '/mcp',
+      headers: { host: 'localhost' },
+    });
     await app.close();
 
     expect(first.statusCode).toBe(200);
@@ -275,16 +289,19 @@ describe('MCP HTTP security guard', () => {
 
     const unauthorized = await app.inject({
       method: 'POST',
+      remoteAddress: REMOTE_CLIENT_ADDRESS,
       url: '/mcp',
       headers: { host: 'localhost', authorization: 'Bearer incorrect-token' },
     });
     const authorized = await app.inject({
       method: 'POST',
+      remoteAddress: REMOTE_CLIENT_ADDRESS,
       url: '/mcp',
       headers: { host: 'localhost', authorization: `Bearer ${REMOTE_TOKEN}` },
     });
     const limited = await app.inject({
       method: 'POST',
+      remoteAddress: REMOTE_CLIENT_ADDRESS,
       url: '/mcp',
       headers: { host: 'localhost', authorization: `Bearer ${REMOTE_TOKEN}` },
     });
@@ -293,6 +310,29 @@ describe('MCP HTTP security guard', () => {
     expect(unauthorized.statusCode).toBe(401);
     expect(authorized.statusCode).toBe(200);
     expect(limited.statusCode).toBe(429);
+  });
+
+  test('does not rate-limit loopback callers', async () => {
+    const config = parseMcpHttpSecurityConfig({
+      listenHost: '127.0.0.1',
+      env: {},
+      rateLimitPerMinute: 1,
+    });
+    const app = Fastify();
+    app.all('/mcp', { preHandler: createMcpHttpSecurityGuard(config) }, async () => ({ ok: true }));
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mcp',
+        headers: { host: 'localhost' },
+      });
+      statuses.push(response.statusCode);
+    }
+    await app.close();
+
+    expect(statuses).toEqual([200, 200, 200, 200, 200]);
   });
 
   test('skips all checks for OPTIONS requests', async () => {

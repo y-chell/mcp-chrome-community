@@ -151,7 +151,6 @@ if (window.__FILL_HELPER_INITIALIZED__) {
 
       // Scroll element into view
       element.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'center' });
-      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Focus the element
       element.focus();

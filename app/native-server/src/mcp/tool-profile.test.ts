@@ -10,7 +10,7 @@ import {
 
 describe('tool profiles', () => {
   test('keeps the full catalog as the backward-compatible default', () => {
-    expect(resolveToolProfile(undefined)).toEqual({ profile: 'full' });
+    expect(resolveToolProfile(undefined)).toEqual({ profile: 'core' });
     expect(getExposedToolSchemas('full')).toEqual(TOOL_SCHEMAS);
   });
 
@@ -18,7 +18,7 @@ describe('tool profiles', () => {
     expect(resolveToolProfile(' CORE ')).toEqual({ profile: 'core' });
     expect(resolveToolProfile('search')).toEqual({ profile: 'search' });
     expect(resolveToolProfile('compact')).toEqual({
-      profile: 'full',
+      profile: 'core',
       invalidValue: 'compact',
     });
   });
