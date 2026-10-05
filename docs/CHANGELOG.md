@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.0.13] - 2026-10-05
+
+### Changed
+
+- **STDIO tool profile default**: `CHROME_MCP_TOOL_PROFILE` now defaults to `core` (12 common browser tools plus the 3 catalog tools) instead of `full`, cutting the context every session spends on tool schemas while keeping all other tools reachable through `chrome_search_tools` / `chrome_call_tool`; set `CHROME_MCP_TOOL_PROFILE=full` to advertise the complete catalog again
+- **Per-tool call timeouts**: browser tool calls no longer share a flat 120s budget — interactive tools (click, fill, keyboard, read, query, tabs, clipboard) get 30s, navigation and screenshots 60s, and long-running tools keep 120s; an explicit `timeout` or `timeoutMs` argument still extends the budget with a grace period
+- **Faster interactions**: removed the fixed settle delays after synchronous `scrollIntoView` / `focus` in the click, fill, and keyboard inject helpers, so those actions no longer pay 50–100ms each
+- **Non-blocking dispatch**: the initial tool-call progress notification is no longer awaited before the call is forwarded to the extension
+
+### Fixed
+
+- **Loopback rate limiting**: local (loopback) HTTP callers are no longer subject to the 120 requests/minute limit that surfaced as sudden `429 Too Many Requests` during rapid automation; Host, Origin, and token checks are unchanged, and non-loopback callers are still rate limited
+- **Timeout diagnostics**: a tool call that never receives an extension response now reports that the extension did not respond and points at `chrome_health`, instead of only stating the elapsed time
+
 ## [v1.0.12] - 2026-07-22
 
 ### Added
