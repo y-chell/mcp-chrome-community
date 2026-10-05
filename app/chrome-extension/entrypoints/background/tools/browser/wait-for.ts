@@ -390,9 +390,9 @@ abstract class WaitToolsBase extends BaseBrowserToolExecutor {
         const injected = await chrome.scripting.executeScript({
           target: { tabId: tab.id!, frameIds } as chrome.scripting.InjectionTarget,
           world: 'MAIN',
-          // chrome.scripting.executeScript never awaits a promise returned by the injected
-          // function, so an async function comes back as result === null and the predicate looks
-          // like it never matched. This function must stay synchronous.
+          // Kept synchronous on purpose: each poll should be a cheap snapshot. (The earlier
+          // `result === null` bug came from the es2015 build target rewriting `async` into a
+          // bundle-only `__async` helper; see wxt.config.ts.)
           func: (predicate: string) => {
             const source = String(predicate || '').trim();
             try {

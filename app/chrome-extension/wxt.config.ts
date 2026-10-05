@@ -256,8 +256,12 @@ export default defineConfig({
         : []),
     ],
     build: {
-      // 我们的构建产物需要兼容到es6
-      target: 'es2015',
+      // Must stay >= es2017. Functions passed to chrome.scripting.executeScript({ func }) are
+      // serialized and run in the page; with a lower target esbuild rewrites `async` into the
+      // bundle-level `__async` helper (and object spread into `__spreadValues`), which does not
+      // exist in the page, so the injected call throws and executeScript returns `null`.
+      // MV3 already requires Chrome 88+, which supports everything in es2020.
+      target: 'es2020',
       // 非生产环境下生成sourcemap
       sourcemap: env.mode !== 'production',
       // 禁用gzip 压缩大小报告，因为压缩大型文件可能会很慢
