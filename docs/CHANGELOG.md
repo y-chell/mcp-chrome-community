@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.0.15] - 2026-10-05
+
+### Changed
+
+- **HTTP tool profile**: `/mcp` and `/sse` now advertise the `core` catalog by default, matching STDIO. `CHROME_MCP_TOOL_PROFILE` still sets the default, and an HTTP client can pick a profile per connection with `?profile=full|core|search` (for example `http://127.0.0.1:12306/mcp?profile=full`). Hidden tools remain callable by name, and `chrome_search_tools` / `chrome_describe_tool` / `chrome_call_tool` stay available for on-demand discovery
+- **Session binding reuse**: `browser-session-context` reuses the binding that was validated before the call instead of re-querying tabs and windows on every call, and refreshes it in place when a tool result points at the same tab; `tabs.onRemoved` still clears stale bindings
+- **Quieter content-script injection**: dropped the per-call injection logging from the hot path in `injectContentScript`
+
 ## [v1.0.14] - 2026-10-05
 
 ### Fixed
