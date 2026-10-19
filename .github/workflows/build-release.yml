@@ -58,6 +58,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      - name: Build native dependencies
+        run: pnpm --filter mcp-chrome-community-bridge rebuild better-sqlite3
+
       - name: Validate release extension key
         env:
           CHROME_EXTENSION_KEY: ${{ secrets.CHROME_EXTENSION_KEY }}

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structured MCP results now keep complete object data in `structuredContent` while returning only a concise text summary, avoiding duplicate page, network, and debugging payloads in the model context
 - Native builds now fail early when `dist` cannot be replaced or `better-sqlite3` does not match the active Node.js ABI
 - Pinned the repository package manager to pnpm 8.15.9 to match the lockfile
+- Release CI now explicitly rebuilds `better-sqlite3` under its Node 24 runtime after the script-free dependency install
 
 ### Fixed
 
