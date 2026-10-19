@@ -1,6 +1,6 @@
 {
   "name": "mcp-chrome-community-bridge",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "Native Messaging host for mcp-chrome-community",
   "main": "dist/index.js",
   "bin": {

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.0.17] - 2026-10-19
+
+### Changed
+
+- Structured MCP results now keep complete object data in `structuredContent` while returning only a concise text summary, avoiding duplicate page, network, and debugging payloads in the model context
+- Native builds now fail early when `dist` cannot be replaced or `better-sqlite3` does not match the active Node.js ABI
+- Pinned the repository package manager to pnpm 8.15.9 to match the lockfile
+
+### Fixed
+
+- Prevented the Native Host from silently retaining an old runtime path after a failed build, which could make the embedded assistant fail with a `better-sqlite3` `NODE_MODULE_VERSION` error
+
 ## [v1.0.16] - 2026-10-05
 
 ### Fixed
