@@ -1,6 +1,6 @@
 {
   "name": "mcp-chrome-community-bridge",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "description": "Native Messaging host for mcp-chrome-community",
   "main": "dist/index.js",
   "bin": {
@@ -54,7 +54,7 @@
     "@fastify/cors": "^11.0.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node-fetch": "2",
-    "better-sqlite3": "^11.6.0",
+    "better-sqlite3": "^12.6.2",
     "chalk": "^5.4.1",
     "chrome-devtools-frontend": "^1.0.1299282",
     "chrome-mcp-shared": "workspace:*",
