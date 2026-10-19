@@ -9,8 +9,8 @@ console.log('清理上次构建...');
 try {
   fs.rmSync(distDir, { recursive: true, force: true });
 } catch (err) {
-  // 忽略目录不存在的错误
-  console.log(err);
+  const message = err instanceof Error ? err.message : String(err);
+  throw new Error(`无法清理旧的 dist 目录。请先停止 Native Server/Chrome 连接后重试: ${message}`);
 }
 
 // 创建dist目录
@@ -21,6 +21,18 @@ console.log('dist 和 dist/logs 目录已创建/确认存在');
 // 编译TypeScript
 console.log('编译TypeScript...');
 execSync('tsc', { stdio: 'inherit' });
+
+// better-sqlite3 is a native addon. Fail during build instead of producing a package whose
+// recorded Node runtime cannot load the installed binary.
+try {
+  require('better-sqlite3');
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  throw new Error(
+    `better-sqlite3 与当前 Node.js ABI 不匹配 (${process.version}, modules=${process.versions.modules})。` +
+      ` 请在当前 Node.js 下运行 npm rebuild better-sqlite3 后重新构建: ${message}`,
+  );
+}
 
 // 复制配置文件
 console.log('复制配置文件...');

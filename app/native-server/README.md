@@ -134,7 +134,14 @@ claude auth status
 
 Native Server 会从用户级注册表读取 Native Messaging Host 清单。Release 扩展使用固定扩展 ID；源码构建未设置 `CHROME_EXTENSION_KEY` 时，Chrome 生成的新 ID 必须与清单 `allowed_origins` 一致。
 
-如果 Node.js 升级后出现 `better-sqlite3` bindings 错误，应在当前 Node 版本下重新安装或重建依赖。不要从另一台机器复制 `node_modules`。
+如果 Node.js 升级后出现 `better-sqlite3` bindings 错误，先停止 Native Server，再在最终运行 Native Host 的同一个 Node 版本下执行：
+
+```bash
+npm rebuild better-sqlite3
+pnpm run build:native
+```
+
+Native Host 会使用构建时写入的 `dist/node_path.txt`，所以安装、重建和运行必须使用同一个 Node.js 版本。不要从另一台机器复制 `node_modules`。
 
 ## 许可证
 
