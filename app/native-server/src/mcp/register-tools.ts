@@ -14,6 +14,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServerContext } from './mcp-server';
 import { LONG_TOOL_CALL_TIMEOUT_MS, getToolCallTimeoutMs } from './tool-timeouts';
 import { getExposedToolSchemas, handleProfileMetaTool, resolveToolProfile } from './tool-profile';
+import { compactStructuredToolResult } from './tool-result';
 
 const HEALTH_TOOL_NAME = 'chrome_health';
 
@@ -309,14 +310,15 @@ function appendNativeHealthMetadata(result: CallToolResult, context: ToolCallCon
 // Older extensions and dynamic flows may still return JSON only through text content.
 // New stable browser tools populate structuredContent in the extension itself.
 function appendLegacyStructuredContent(result: CallToolResult): CallToolResult {
-  if (result.isError || result.structuredContent !== undefined) return result;
+  if (result.isError) return result;
+  if (result.structuredContent !== undefined) return compactStructuredToolResult(result);
   const first = result.content?.[0];
   if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
 
   try {
     const parsed = JSON.parse(first.text);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return result;
-    return { ...result, structuredContent: parsed };
+    return compactStructuredToolResult({ ...result, structuredContent: parsed });
   } catch {
     return result;
   }

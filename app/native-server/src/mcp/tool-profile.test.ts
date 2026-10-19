@@ -111,7 +111,7 @@ describe('profile meta tools', () => {
       'core',
       invoke,
     );
-    const payload = JSON.parse((result?.content[0] as { text: string }).text);
+    const payload = result?.structuredContent;
 
     expect(payload).toMatchObject({
       success: true,
@@ -120,6 +120,9 @@ describe('profile meta tools', () => {
       tool: { name: TOOL_NAMES.BROWSER.GIF_RECORDER },
     });
     expect(result?.structuredContent).toEqual(payload);
+    expect(result?.content).toEqual([
+      { type: 'text', text: 'success. Full data is in structuredContent.' },
+    ]);
     expect(invoke).not.toHaveBeenCalled();
   });
 

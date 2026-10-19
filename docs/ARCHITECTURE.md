@@ -1,6 +1,6 @@
 # mcp-chrome-community Architecture
 
-This document describes the current community-fork runtime. The protocol layer targets `@modelcontextprotocol/sdk` v1.29 while retaining compatibility with clients that only consume text tool results.
+This document describes the current community-fork runtime. The protocol layer targets `@modelcontextprotocol/sdk` v1.29 and clients that consume structured tool results.
 
 ## System Boundaries
 
@@ -72,12 +72,12 @@ flowchart LR
 
 The Native Server, extension execution layer, STDIO profiles, and tests consume this contract to reduce drift.
 
-### Result Compatibility
+### Structured Results
 
-Stable object results expose both:
+Stable object results expose:
 
-- `content`: text or image content for older clients.
-- `structuredContent`: object data for modern MCP clients.
+- `content`: concise text summaries or image content; text summaries do not duplicate the full structured payload.
+- `structuredContent`: the complete object result for MCP clients.
 
 Only tools with verified stable output declare `outputSchema`. Images, dynamic flows, and shape-variable results continue to use MCP `content` as their primary representation.
 

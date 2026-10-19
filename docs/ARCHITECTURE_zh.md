@@ -1,6 +1,6 @@
 # mcp-chrome-community 架构设计
 
-本文档描述当前社区版的实际运行架构。协议层以 `@modelcontextprotocol/sdk` v1.29 为基线，同时兼容现代客户端和仍只读取文本结果的旧客户端。
+本文档描述当前社区版的实际运行架构。协议层以 `@modelcontextprotocol/sdk` v1.29 为基线，面向能消费结构化工具结果的现代 MCP 客户端。
 
 ## 系统边界
 
@@ -72,12 +72,12 @@ flowchart LR
 
 Native Server、扩展执行层、STDIO profile 和测试都消费这套契约，减少定义漂移。
 
-### 结果兼容
+### 结构化结果
 
-稳定的对象结果同时返回：
+稳定的对象结果返回：
 
-- `content`：文本或图片内容，兼容旧客户端。
-- `structuredContent`：对象结果，供现代 MCP 客户端直接消费。
+- `content`：文本摘要或图片内容；文本摘要不复制完整结构化数据。
+- `structuredContent`：完整对象结果，供 MCP 客户端直接消费。
 
 只有已验证结构稳定的工具声明 `outputSchema`。图片、动态 Flow 和形态不稳定的结果继续以 MCP `content` 为主。
 

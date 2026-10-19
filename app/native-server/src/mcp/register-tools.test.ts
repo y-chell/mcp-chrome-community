@@ -63,8 +63,8 @@ beforeEach(() => {
 });
 
 describe('structured tool results', () => {
-  test('adds structuredContent for a successful JSON object without changing content', async () => {
-    const content = [{ type: 'text', text: '{"ok":true,"count":2}' }];
+  test('adds structuredContent and compacts duplicate JSON text', async () => {
+    const content = [{ type: 'text', text: '{"success":true,"count":2}' }];
     sendRequest.mockResolvedValueOnce({ status: 'success', data: { content } });
     const { callTool } = createServerHarness();
 
@@ -73,8 +73,10 @@ describe('structured tool results', () => {
       {},
     );
 
-    expect(result.content).toEqual(content);
-    expect(result.structuredContent).toEqual({ ok: true, count: 2 });
+    expect(result.content).toEqual([
+      { type: 'text', text: 'success. Full data is in structuredContent.' },
+    ]);
+    expect(result.structuredContent).toEqual({ success: true, count: 2 });
   });
 
   test('preserves extension-provided structuredContent without reparsing legacy text', async () => {
@@ -90,7 +92,9 @@ describe('structured tool results', () => {
       {},
     );
 
-    expect(result.content).toEqual(content);
+    expect(result.content).toEqual([
+      { type: 'text', text: 'success. Full data is in structuredContent.' },
+    ]);
     expect(result.structuredContent).toEqual({ ok: true, source: 'extension' });
   });
 
@@ -130,7 +134,7 @@ describe('structured tool results', () => {
     expect(result).toEqual(data);
   });
 
-  test('keeps health text and structuredContent metadata in sync', async () => {
+  test('enriches health structuredContent without repeating the payload in text', async () => {
     sendRequest.mockResolvedValueOnce({
       status: 'success',
       data: {
@@ -144,9 +148,7 @@ describe('structured tool results', () => {
       { params: { name: 'chrome_health', arguments: {} } },
       { sessionId: 'session-1', requestId: 7 },
     );
-    const parsedText = JSON.parse(result.content[0].text);
-
-    expect(result.structuredContent).toEqual(parsedText);
+    expect(result.content[0].text).toBe('Result available. Full data is in structuredContent.');
     expect(result.structuredContent).toMatchObject({
       status: 'stale',
       bridge: { sessionId: 'session-1', requestId: '7' },

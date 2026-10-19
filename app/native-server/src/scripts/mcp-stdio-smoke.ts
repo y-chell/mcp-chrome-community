@@ -278,6 +278,8 @@ function assertNoRpcError(response: JsonRpcMessage, label: string) {
 }
 
 function parseToolText(response: JsonRpcMessage): any {
+  const structuredContent = response.result?.structuredContent;
+  if (isPlainObject(structuredContent)) return structuredContent;
   const text = response.result?.content?.[0]?.text;
   if (typeof text !== 'string') return null;
   try {
@@ -291,7 +293,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function verifyStructuredCompatibility(result: any, label: string) {
+function verifyStructuredResult(result: any, label: string) {
   if (!isPlainObject(result?.structuredContent)) {
     throw new Error(`${label} did not return structuredContent`);
   }
@@ -301,21 +303,13 @@ function verifyStructuredCompatibility(result: any, label: string) {
     throw new Error(`${label} did not preserve legacy text content`);
   }
 
-  let legacyPayload: unknown;
-  try {
-    legacyPayload = JSON.parse(text);
-  } catch {
-    throw new Error(`${label} legacy text content is not JSON`);
-  }
-
-  if (JSON.stringify(legacyPayload) !== JSON.stringify(result.structuredContent)) {
-    throw new Error(`${label} text content and structuredContent differ`);
+  if (text.includes(JSON.stringify(result.structuredContent))) {
+    throw new Error(`${label} duplicated structuredContent in text content`);
   }
 
   return {
-    legacyContent: true,
     structuredContent: true,
-    contentMatchesStructured: true,
+    compactTextContent: true,
   };
 }
 
@@ -357,7 +351,7 @@ async function verifyModernSdkCompatibility(options: SmokeOptions) {
       client: '@modelcontextprotocol/sdk',
       outputSchemaAdvertised: true,
       outputSchemaValidated: true,
-      ...verifyStructuredCompatibility(result, 'Modern SDK chrome_health'),
+      ...verifyStructuredResult(result, 'Modern SDK chrome_health'),
     };
   } finally {
     await client.close().catch(() => undefined);
@@ -913,12 +907,9 @@ async function run() {
         );
       }
       compatibility = {
-        legacyJsonRpc: {
+        jsonRpc: {
           protocolVersion: '2024-11-05',
-          ...verifyStructuredCompatibility(
-            directHealthResponse.result,
-            'Legacy JSON-RPC chrome_health',
-          ),
+          ...verifyStructuredResult(directHealthResponse.result, 'Legacy JSON-RPC chrome_health'),
         },
         modernSdk: await verifyModernSdkCompatibility(options),
       };

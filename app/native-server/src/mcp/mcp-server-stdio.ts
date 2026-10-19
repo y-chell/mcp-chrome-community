@@ -30,6 +30,7 @@ import {
   resolveToolProfile,
   type ChromeMcpToolProfile,
 } from './tool-profile.js';
+import { compactStructuredToolResult } from './tool-result.js';
 
 let stdioMcpServer: Server | null = null;
 let mcpClient: Client | null = null;
@@ -217,7 +218,7 @@ const appendStdioProfileMetadata = (
       },
     };
 
-    return {
+    return compactStructuredToolResult({
       ...result,
       structuredContent: enriched,
       content: [
@@ -227,7 +228,7 @@ const appendStdioProfileMetadata = (
         },
         ...(result.content || []).slice(1),
       ],
-    };
+    });
   } catch {
     return result;
   }
