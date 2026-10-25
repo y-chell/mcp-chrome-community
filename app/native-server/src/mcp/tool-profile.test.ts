@@ -120,9 +120,7 @@ describe('profile meta tools', () => {
       tool: { name: TOOL_NAMES.BROWSER.GIF_RECORDER },
     });
     expect(result?.structuredContent).toEqual(payload);
-    expect(result?.content).toEqual([
-      { type: 'text', text: 'success. Full data is in structuredContent.' },
-    ]);
+    expect(result?.content).toEqual([{ type: 'text', text: JSON.stringify(payload, null, 2) }]);
     expect(invoke).not.toHaveBeenCalled();
   });
 

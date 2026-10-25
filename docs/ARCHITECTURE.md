@@ -76,8 +76,8 @@ The Native Server, extension execution layer, STDIO profiles, and tests consume 
 
 Stable object results expose:
 
-- `content`: concise text summaries or image content; text summaries do not duplicate the full structured payload.
-- `structuredContent`: the complete object result for MCP clients.
+- `content`: complete JSON text or image content, available to clients that render tool results as text.
+- `structuredContent`: the complete object result for clients that consume structured tool results.
 
 Only tools with verified stable output declare `outputSchema`. Images, dynamic flows, and shape-variable results continue to use MCP `content` as their primary representation.
 

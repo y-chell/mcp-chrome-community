@@ -17,7 +17,7 @@ Complete reference for all available tools and their parameters.
 
 The current release targets modern MCP clients:
 
-- Successful object results expose the full data through `structuredContent`; text content contains only a concise status summary so the same page, network, or debugging payload is not duplicated in model context.
+- Successful object results expose the full data in both `content` JSON text and `structuredContent`. This keeps the data available to clients that render text content while allowing structured clients to consume the object directly.
 - Tools with stable result shapes declare `outputSchema`. Images, multimodal output, and dynamic workflows do not claim one universal schema.
 - Tool definitions include strict input schemas and behavioral `annotations`. Unknown fields are rejected at the protocol boundary instead of being silently ignored.
 - Long operations that support `AbortSignal` clean up promptly after client cancellation. Download, network, and general waits can emit throttled progress notifications.

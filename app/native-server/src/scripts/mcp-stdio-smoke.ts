@@ -303,13 +303,22 @@ function verifyStructuredResult(result: any, label: string) {
     throw new Error(`${label} did not preserve legacy text content`);
   }
 
-  if (text.includes(JSON.stringify(result.structuredContent))) {
-    throw new Error(`${label} duplicated structuredContent in text content`);
+  let textPayload: unknown;
+  try {
+    textPayload = JSON.parse(text);
+  } catch {
+    throw new Error(`${label} text content did not contain JSON`);
+  }
+  if (!isPlainObject(textPayload)) {
+    throw new Error(`${label} text content did not contain an object payload`);
+  }
+  if (JSON.stringify(textPayload) !== JSON.stringify(result.structuredContent)) {
+    throw new Error(`${label} text content and structuredContent differ`);
   }
 
   return {
     structuredContent: true,
-    compactTextContent: true,
+    completeTextContent: true,
   };
 }
 

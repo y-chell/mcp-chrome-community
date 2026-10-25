@@ -63,7 +63,7 @@ beforeEach(() => {
 });
 
 describe('structured tool results', () => {
-  test('adds structuredContent and compacts duplicate JSON text', async () => {
+  test('adds structuredContent and preserves complete JSON text', async () => {
     const content = [{ type: 'text', text: '{"success":true,"count":2}' }];
     sendRequest.mockResolvedValueOnce({ status: 'success', data: { content } });
     const { callTool } = createServerHarness();
@@ -73,9 +73,7 @@ describe('structured tool results', () => {
       {},
     );
 
-    expect(result.content).toEqual([
-      { type: 'text', text: 'success. Full data is in structuredContent.' },
-    ]);
+    expect(result.content).toEqual(content);
     expect(result.structuredContent).toEqual({ success: true, count: 2 });
   });
 
@@ -92,9 +90,7 @@ describe('structured tool results', () => {
       {},
     );
 
-    expect(result.content).toEqual([
-      { type: 'text', text: 'success. Full data is in structuredContent.' },
-    ]);
+    expect(result.content).toEqual(content);
     expect(result.structuredContent).toEqual({ ok: true, source: 'extension' });
   });
 
@@ -134,7 +130,7 @@ describe('structured tool results', () => {
     expect(result).toEqual(data);
   });
 
-  test('enriches health structuredContent without repeating the payload in text', async () => {
+  test('enriches health structuredContent and keeps the complete text payload', async () => {
     sendRequest.mockResolvedValueOnce({
       status: 'success',
       data: {
@@ -148,7 +144,10 @@ describe('structured tool results', () => {
       { params: { name: 'chrome_health', arguments: {} } },
       { sessionId: 'session-1', requestId: 7 },
     );
-    expect(result.content[0].text).toBe('Result available. Full data is in structuredContent.');
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      status: 'stale',
+      bridge: { sessionId: 'session-1', requestId: '7' },
+    });
     expect(result.structuredContent).toMatchObject({
       status: 'stale',
       bridge: { sessionId: 'session-1', requestId: '7' },

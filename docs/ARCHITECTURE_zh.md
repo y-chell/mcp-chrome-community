@@ -76,7 +76,7 @@ Native Server、扩展执行层、STDIO profile 和测试都消费这套契约�
 
 稳定的对象结果返回：
 
-- `content`：文本摘要或图片内容；文本摘要不复制完整结构化数据。
+- `content`：完整 JSON 文本或图片内容，供按文本呈现工具结果的客户端直接读取。
 - `structuredContent`：完整对象结果，供 MCP 客户端直接消费。
 
 只有已验证结构稳定的工具声明 `outputSchema`。图片、动态 Flow 和形态不稳定的结果继续以 MCP `content` 为主。

@@ -1,6 +1,5 @@
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
 import { TOOL_NAMES, TOOL_SCHEMAS } from 'chrome-mcp-shared';
-import { compactStructuredToolResult } from './tool-result';
 
 export const CHROME_MCP_TOOL_PROFILE_ENV = 'CHROME_MCP_TOOL_PROFILE';
 
@@ -208,12 +207,11 @@ export function getKnownBrowserTool(name: string): Tool | undefined {
 }
 
 function jsonResult(payload: Record<string, unknown>, isError = false): CallToolResult {
-  const result: CallToolResult = {
+  return {
     content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
     ...(!isError ? { structuredContent: payload } : {}),
     ...(isError ? { isError: true } : {}),
   };
-  return compactStructuredToolResult(result);
 }
 
 function getInputSummary(tool: Tool) {
